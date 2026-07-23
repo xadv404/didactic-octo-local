@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier — accès</title>
+<style>
+:root{--bg:#14110f;--panel:#1c1815;--edge:#332b23;--ink:#efe7db;--dim:#8f8073;
+  --ochre:#d9a441;--rust:#b5563a;--sage:#7d9471;--mono:'Cascadia Code','Consolas',monospace;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+  height:100vh;display:flex;align-items:center;justify-content:center}
+.card{width:340px;background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+  padding:30px 28px}
+.brand{font-size:22px;font-weight:600;letter-spacing:-.3px;margin-bottom:4px}
+.brand em{font-style:normal;color:var(--ochre)}
+.tag{font-size:11.5px;color:var(--dim);font-family:var(--mono);margin-bottom:22px}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--dim);margin:14px 0 6px}
+input{width:100%;background:var(--bg);border:1px solid var(--edge);border-radius:7px;
+  color:var(--ink);padding:11px 13px;font-family:inherit;font-size:14px}
+input:focus{outline:none;border-color:#5c4a32}
+button{width:100%;margin-top:20px;background:var(--ochre);color:#191410;border:none;
+  border-radius:7px;padding:12px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+button:hover{background:#e8b556}
+button:disabled{background:var(--edge);color:var(--dim);cursor:not-allowed}
+.msg{margin-top:14px;font-size:12.5px;min-height:17px;color:var(--rust)}
+.msg.ok{color:var(--sage)}
+.hint{margin-top:16px;font-size:11px;color:var(--dim);line-height:1.6}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">Atelier<em>.</em></div>
+  <div class="tag">{% if setup %}première configuration{% else %}accès protégé{% endif %}</div>
+
+  <form id="form">
+    <label>Mot de passe</label>
+    <input type="password" id="password" autocomplete="{% if setup %}new-password{% else %}current-password{% endif %}" autofocus>
+    {% if setup %}
+    <label>Confirmer</label>
+    <input type="password" id="confirm" autocomplete="new-password">
+    {% endif %}
+    <button type="submit" id="go">{% if setup %}Définir le mot de passe{% else %}Entrer{% endif %}</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div class="hint">
+    {% if setup %}Ce mot de passe protégera l'atelier. {% endif %}
+    La session reste ouverte {{ days }} jours, puis le mot de passe est redemandé.
+  </div>
+</div>
+
+<script>
+const setup = {{ 'true' if setup else 'false' }};
+const form = document.getElementById('form');
+const msg = document.getElementById('msg');
+const go = document.getElementById('go');
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  msg.className = 'msg'; msg.textContent = '';
+  const password = document.getElementById('password').value;
+  const body = { password };
+  if (setup) body.confirm = document.getElementById('confirm').value;
+  go.disabled = true;
+  try {
+    const r = await fetch('/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { msg.className = 'msg ok'; msg.textContent = 'Accès accordé…'; location.href = '/'; }
+    else { msg.textContent = j.error || 'Échec.'; go.disabled = false; }
+  } catch { msg.textContent = 'Serveur injoignable.'; go.disabled = false; }
+});
+</script>
+</body>
+</html>

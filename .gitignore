@@ -1,0 +1,17 @@
+# Donnees locales : conversations, memoire, index, auth, cle de session
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editeurs
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
