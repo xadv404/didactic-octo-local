@@ -75,6 +75,30 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .fitem.dir .nm{color:var(--slate)}
 .fitem.file:hover .nm{color:var(--ochre)}
 .note{padding:12px 8px;font-size:11.5px;color:var(--dim);line-height:1.6}
+.ws-top{display:flex;justify-content:space-between;align-items:center}
+.wsedit{background:none;border:none;color:var(--dim);font-size:10.5px;cursor:pointer;font-family:var(--mono)}
+.wsedit:hover{color:var(--ochre)}
+.wspath{margin-top:7px;font-family:var(--mono);font-size:11px;color:var(--sage);word-break:break-all;line-height:1.4}
+
+/* ---------- modal choix de dossier ---------- */
+.modal{position:fixed;inset:0;background:rgba(10,8,7,.72);display:none;align-items:center;justify-content:center;z-index:50}
+.modal.on{display:flex}
+.modal-card{width:400px;max-width:92vw;background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:22px 22px 18px}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:14px}
+.modal-card label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:12px 0 5px}
+.modal-card input{width:100%;background:var(--bg);border:1px solid var(--edge);border-radius:7px;color:var(--ink);
+  padding:10px 12px;font-family:var(--mono);font-size:12.5px}
+.modal-card input:focus{outline:none;border-color:#5c4a32}
+.modal-hint{font-size:11px;color:var(--dim);line-height:1.6;margin-top:9px}
+.modal-hint span{color:var(--ochre);font-family:var(--mono)}
+.modal-msg{font-size:12px;color:var(--rust);min-height:16px;margin-top:8px}
+.modal-row{display:flex;gap:9px;justify-content:flex-end;margin-top:16px}
+.modal-row button{border:none;border-radius:7px;padding:10px 16px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.mcancel{background:var(--panel-2);color:var(--dim)}
+.mcancel:hover{color:var(--ink)}
+.mok{background:var(--ochre);color:#191410}
+.mok:hover{background:#e8b556}
+.mok:disabled{background:var(--edge);color:var(--dim);cursor:not-allowed}
 
 /* ---------- main ---------- */
 .main{display:flex;flex-direction:column;overflow:hidden}
@@ -183,14 +207,14 @@ textarea::placeholder{color:var(--dim)}
     <div class="convs" id="convs"><div class="note">Chargement…</div></div>
 
     <div class="ws">
-      <span class="rail-label">Espace de travail</span>
-      <div class="ws-row">
-        <input id="wsPath" placeholder="chemin du dossier…" spellcheck="false">
-        <button onclick="saveWorkspace()" title="Définir">✓</button>
+      <div class="ws-top">
+        <span class="rail-label">Dossier du chat</span>
+        <button class="wsedit" id="wsEdit" onclick="openFolderDialog(true)" title="Changer de dossier" style="display:none">changer</button>
       </div>
+      <div class="wspath" id="wsPath">—</div>
     </div>
     <div class="crumbs" id="crumbs"></div>
-    <div class="files" id="files"><div class="note">…</div></div>
+    <div class="files" id="files"><div class="note">Ouvre ou crée un chat.</div></div>
   </aside>
 
   <main class="main">
@@ -222,6 +246,23 @@ textarea::placeholder{color:var(--dim)}
       </div>
     </div>
   </main>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <div class="modal-title" id="modalTitle">Nouveau chat</div>
+    <label id="mTitleLabel">Titre (optionnel)</label>
+    <input id="mTitle" placeholder="ex. Site vitrine" spellcheck="false">
+    <label>Dossier du projet</label>
+    <input id="mFolder" placeholder="nom d'un nouveau dossier, ou chemin existant" spellcheck="false">
+    <div class="modal-hint">Un simple nom crée un dossier sous <span id="projRoot">…</span>.
+      Un chemin absolu (ex. <span>/home/moi/projet</span>) ouvre un dossier existant.</div>
+    <div class="modal-msg" id="modalMsg"></div>
+    <div class="modal-row">
+      <button class="mcancel" onclick="closeModal()">Annuler</button>
+      <button class="mok" id="mOk" onclick="submitFolder()">Créer / Ouvrir</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -267,25 +308,29 @@ async function health(){
 }
 
 /* ---------- espace de travail & fichiers ---------- */
-let curPath='.';
+let curPath='.', projectsRoot='', wsPath='';
 async function loadWorkspace(){
-  try{const j=await(await fetch('/api/workspace')).json();document.getElementById('wsPath').value=j.workspace||'';}catch{}
+  try{
+    const j=await(await fetch('/api/workspace')).json();
+    projectsRoot=j.projects_root||'';
+    document.getElementById('projRoot').textContent=projectsRoot||'le dossier des projets';
+  }catch{}
 }
-async function saveWorkspace(){
-  const path=document.getElementById('wsPath').value.trim(); if(!path)return;
-  const r=await fetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-  const j=await r.json();
-  if(j.error){alert(j.error);return}
-  document.getElementById('wsPath').value=j.workspace;curPath='.';loadFiles('.');
+function setWsDisplay(path){
+  wsPath=path||'';
+  document.getElementById('wsPath').textContent=path||'—';
+  document.getElementById('wsEdit').style.display=convId?'inline':'none';
 }
 async function loadFiles(path){
+  if(!convId){document.getElementById('files').innerHTML='<div class="note">Ouvre ou crée un chat.</div>';document.getElementById('crumbs').innerHTML='';return}
   curPath=path||'.';
   const box=document.getElementById('files'),cr=document.getElementById('crumbs');
   box.innerHTML='<div class="note">…</div>';
   try{
-    const r=await fetch('/api/files?path='+encodeURIComponent(curPath));
+    const r=await fetch('/api/files?conversation='+encodeURIComponent(convId)+'&path='+encodeURIComponent(curPath));
     const j=await r.json();
     if(j.error){box.innerHTML='<div class="note">'+esc(j.error)+'</div>';cr.innerHTML='';return}
+    if(j.workspace) setWsDisplay(j.workspace);
     const rel=(j.path==='.'?'':j.path);
     let crumb='<a onclick="loadFiles(\'.\')">racine</a>';
     if(rel){let acc='';rel.split('/').forEach(s=>{acc=acc?acc+'/'+s:s;crumb+=' / <a onclick="loadFiles(\''+acc+'\')">'+esc(s)+'</a>';});}
@@ -324,15 +369,52 @@ async function loadConversations(){
     });
   }catch{box.innerHTML='<div class="note">Chargement impossible.</div>';}
 }
-async function newConversation(){
-  const j=await(await fetch('/api/conversations',{method:'POST'})).json();
-  await loadConversations();
-  selectConversation(j.conversation.id);
+/* ---------- dialogue dossier (créer / ouvrir / changer) ---------- */
+let modalMode='create';   // 'create' ou 'change'
+function newConversation(){ openFolderDialog(false); }
+function openFolderDialog(changing){
+  modalMode=changing?'change':'create';
+  if(changing && !convId) return;
+  document.getElementById('modalTitle').textContent=changing?'Changer de dossier':'Nouveau chat';
+  document.getElementById('mTitleLabel').style.display=changing?'none':'block';
+  document.getElementById('mTitle').style.display=changing?'none':'block';
+  document.getElementById('mTitle').value='';
+  document.getElementById('mFolder').value=changing?wsPath:'';
+  document.getElementById('modalMsg').textContent='';
+  document.getElementById('modal').classList.add('on');
+  setTimeout(()=>document.getElementById('mFolder').focus(),30);
+}
+function closeModal(){document.getElementById('modal').classList.remove('on');}
+async function submitFolder(){
+  const folder=document.getElementById('mFolder').value.trim();
+  const title=document.getElementById('mTitle').value.trim();
+  const msg=document.getElementById('modalMsg');
+  if(!folder){msg.textContent='Indique un dossier.';return}
+  const ok=document.getElementById('mOk');ok.disabled=true;
+  try{
+    if(modalMode==='create'){
+      const r=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({folder,title})});
+      const j=await r.json();
+      if(j.error){msg.textContent=j.error;ok.disabled=false;return}
+      closeModal();
+      await loadConversations();
+      selectConversation(j.conversation.id);
+    }else{
+      const r=await fetch('/api/conversation/'+convId+'/workspace',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({folder})});
+      const j=await r.json();
+      if(j.error){msg.textContent=j.error;ok.disabled=false;return}
+      closeModal();
+      setWsDisplay(j.workspace);loadFiles('.');
+    }
+  }catch{msg.textContent='Serveur injoignable.';}
+  finally{ok.disabled=false;}
 }
 async function deleteConversation(id){
   if(!confirm('Supprimer cette conversation ?'))return;
   await fetch('/api/conversation/'+id,{method:'DELETE'});
-  if(id===convId){convId=null;inner().innerHTML='';showIntro();}
+  if(id===convId){convId=null;inner().innerHTML='';showIntro();setWsDisplay('');loadFiles('.');}
   loadConversations();
 }
 function showIntro(){
@@ -344,8 +426,11 @@ async function selectConversation(id){
   document.querySelectorAll('.conv').forEach(c=>c.classList.toggle('on',c.dataset.id===id));
   inner().innerHTML='';
   const page=await fetchPage();
-  if(page && !page.messages.length){
-    inner().innerHTML='<div class="intro"><h2>Conversation vide</h2><p>Pose ta première demande ci-dessous.</p></div>';
+  if(page){
+    setWsDisplay(page.workspace);
+    loadFiles('.');
+    if(!page.messages.length)
+      inner().innerHTML='<div class="intro"><h2>Chat prêt</h2><p>Dossier : <code>'+esc(page.workspace||'—')+'</code><br>Pose ta première demande ci-dessous.</p></div>';
   }
   scroll();
 }
@@ -506,8 +591,16 @@ function handleEvent(m){
 const ta=document.getElementById('q');
 ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();run()}});
 ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,170)+'px'});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+document.getElementById('mFolder').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitFolder()}});
+document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 
-health();loadWorkspace();loadFiles('.');loadConversations();setInterval(health,20000);
+health();loadWorkspace();setInterval(health,20000);
+(async()=>{
+  await loadConversations();
+  const first=document.querySelector('.conv');
+  if(first) selectConversation(first.dataset.id);
+})();
 </script>
 </body>
 </html>

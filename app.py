@@ -136,21 +136,31 @@ def health():
                         "workspace": str(tools.get_workspace())}), 503
 
 
+def _activate(conv_id):
+    """Active l'espace de travail du chat pour la requete en cours."""
+    ws = store.conversation_workspace(conv_id) if conv_id else ""
+    tools.set_active_workspace(ws or None)
+    return ws
+
+
 @app.route("/api/workspace", methods=["GET", "POST"])
 @login_required
 def workspace():
+    """Dossier par defaut (suggestion a la creation d'un chat)."""
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         path, err = tools.set_workspace(data.get("path", ""))
         if err:
             return jsonify({"error": err}), 400
         return jsonify({"workspace": str(path)})
-    return jsonify({"workspace": str(tools.get_workspace())})
+    return jsonify({"workspace": str(tools.get_workspace()),
+                    "projects_root": str(tools.PROJECTS_ROOT)})
 
 
 @app.route("/api/files")
 @login_required
 def files():
+    _activate(request.args.get("conversation", ""))
     result = tools.list_dir(request.args.get("path", "."))
     if not result.get("ok"):
         return jsonify({"error": result.get("error")}), 400
@@ -160,6 +170,7 @@ def files():
 @app.route("/api/file")
 @login_required
 def file_content():
+    _activate(request.args.get("conversation", ""))
     result = tools.read_file(request.args.get("path", ""))
     if not result.get("ok"):
         return jsonify({"error": result.get("error")}), 400
@@ -179,10 +190,27 @@ def conversations():
 @app.route("/api/conversations", methods=["POST"])
 @login_required
 def create_conversation():
-    conv = store.new_conversation()
+    data = request.get_json(silent=True) or {}
+    path, existed, err = tools.prepare_workspace(data.get("folder", ""))
+    if err:
+        return jsonify({"error": err}), 400
+    conv = store.new_conversation(data.get("title", ""), workspace=str(path))
     return jsonify({"conversation": {"id": conv["id"], "title": conv["title"],
+                                     "workspace": str(path), "existed": existed,
                                      "created": conv["created"], "updated": conv["updated"],
                                      "message_count": 0}})
+
+
+@app.route("/api/conversation/<conv_id>/workspace", methods=["POST"])
+@login_required
+def change_workspace(conv_id):
+    data = request.get_json(silent=True) or {}
+    path, existed, err = tools.prepare_workspace(data.get("folder", ""))
+    if err:
+        return jsonify({"error": err}), 400
+    if not store.set_conversation_workspace(conv_id, str(path)):
+        return jsonify({"error": "Conversation introuvable."}), 404
+    return jsonify({"workspace": str(path), "existed": existed})
 
 
 @app.route("/api/conversation/<conv_id>/messages")
@@ -230,13 +258,19 @@ def run():
     if not question:
         return jsonify({"error": "Question vide."}), 400
 
-    # Conversation : reprise ou creation.
+    # Conversation : reprise ou creation (dossier par defaut si nouveau).
     conv = store.load_conversation(conv_id) if conv_id else None
     if conv is None:
-        conv = store.new_conversation()
+        default_folder = str(tools.get_workspace())
+        path, _, _ = tools.prepare_workspace(default_folder)
+        conv = store.new_conversation(workspace=str(path) if path else "")
         conv_id = conv["id"]
 
-    # Fichier joint : lecture confinee a l'espace de travail.
+    # Espace de travail propre a ce chat.
+    ws = store.conversation_workspace(conv_id)
+    tools.set_active_workspace(ws or None)
+
+    # Fichier joint : lecture confinee a l'espace du chat.
     file_name, file_text = "", ""
     if file_path:
         result = tools.read_file(file_path)
@@ -250,7 +284,7 @@ def run():
     def stream():
         yield agents.sse("conversation", id=conv_id,
                          title=store.load_conversation(conv_id)["title"])
-        yield from agents.run_team(conv_id, question, file_name, file_text)
+        yield from agents.run_team(conv_id, question, file_name, file_text, workspace=ws)
 
     return Response(stream(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

@@ -29,8 +29,15 @@ import tools
 
 OLLAMA_URL = tools.os.environ.get("OLLAMA_URL", "http://localhost:11434")
 # Defaut oriente code et appels d'outils : nettement meilleur que mistral:7b
-# pour suivre le protocole JSON du developpeur. Surchargeable via OLLAMA_MODEL.
+# pour suivre le protocole JSON du developpeur. Tient dans ~5 Go (Q4) donc OK
+# sur 12 Go de RAM en CPU. Surchargeable via OLLAMA_MODEL (ex. dolphin3 pour un
+# modele moins censure, qwen2.5-coder:14b si la machine suit).
 MODEL = tools.os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+
+# Reglages ressources adaptes a une petite machine (12 Go RAM, 6 cœurs, CPU).
+# num_ctx borne la fenetre de contexte (donc la RAM) ; num_thread cadre le CPU.
+NUM_CTX = int(tools.os.environ.get("OLLAMA_NUM_CTX", "8192"))
+NUM_THREAD = int(tools.os.environ.get("OLLAMA_NUM_THREAD", "0"))  # 0 = auto
 
 MAX_STEPS = int(tools.os.environ.get("ATELIER_MAX_STEPS", "16"))
 MAX_CYCLES = int(tools.os.environ.get("ATELIER_MAX_CYCLES", "2"))
@@ -43,12 +50,15 @@ FILE_EXCERPT_CHARS = 6000
 
 def ollama_stream(system, prompt, temperature=0.6, max_tokens=1200):
     """Diffuse la reponse du modele token par token."""
+    options = {"temperature": temperature, "top_p": 0.9,
+               "num_predict": max_tokens, "num_ctx": NUM_CTX}
+    if NUM_THREAD > 0:
+        options["num_thread"] = NUM_THREAD
     try:
         r = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": MODEL, "system": system, "prompt": prompt, "stream": True,
-                  "options": {"temperature": temperature, "top_p": 0.9,
-                              "num_predict": max_tokens}},
+            json={"model": MODEL, "system": system, "prompt": prompt,
+                  "stream": True, "options": options},
             stream=True, timeout=600,
         )
         if r.status_code != 200:
@@ -293,8 +303,10 @@ def _developer_loop(conv_id, context, brief, cycle):
 # Orchestration principale
 # --------------------------------------------------------------------------
 
-def run_team(conv_id, question, file_name="", file_text=""):
+def run_team(conv_id, question, file_name="", file_text="", workspace=""):
     """Genere le flux SSE de toute la chaine et persiste le resultat."""
+    if workspace:
+        tools.set_active_workspace(workspace)
     memory = store.memory_block(conv_id)
     history = store.history_block(conv_id)
     snapshot = _workspace_snapshot()

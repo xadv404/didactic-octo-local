@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import quote_plus  # noqa: F401  (garde la parite avec l'ancien app)
+import contextvars
 import subprocess
 import shutil
 import json
@@ -31,6 +32,19 @@ WORKSPACE_FILE = DATA_DIR / "workspace.json"
 DEFAULT_WORKSPACE = Path(
     os.environ.get("ATELIER_WORKSPACE", str(Path.home() / "Desktop"))
 ).expanduser()
+
+# Racine ou aterrissent les projets crees par simple nom (chaque chat = un dossier).
+PROJECTS_ROOT = Path(
+    os.environ.get("ATELIER_PROJECTS", str(Path.home() / "AtelierProjets"))
+).expanduser()
+
+# Espace actif pour la requete en cours : chaque conversation a le sien.
+_ACTIVE = contextvars.ContextVar("active_workspace", default=None)
+
+
+def set_active_workspace(path) -> None:
+    """Fixe l'espace de travail de la requete/generation en cours."""
+    _ACTIVE.set(str(path) if path else None)
 
 ALLOW_SHELL = os.environ.get("ATELIER_ALLOW_SHELL", "1") != "0"
 RUN_TIMEOUT = int(os.environ.get("ATELIER_RUN_TIMEOUT", "120"))
@@ -53,7 +67,8 @@ _DANGEROUS = [
 # Espace de travail
 # --------------------------------------------------------------------------
 
-def _load_ws() -> Path:
+def _global_default() -> Path:
+    """Dossier par defaut suggere a la creation d'un chat (repli)."""
     try:
         raw = json.loads(WORKSPACE_FILE.read_text(encoding="utf-8"))
         return Path(raw["path"]).expanduser()
@@ -62,10 +77,13 @@ def _load_ws() -> Path:
 
 
 def get_workspace() -> Path:
-    return _load_ws()
+    """Espace actif de la requete en cours, sinon le defaut global."""
+    active = _ACTIVE.get()
+    return Path(active) if active else _global_default()
 
 
 def set_workspace(path_str: str) -> tuple[Path | None, str | None]:
+    """Change le dossier par defaut global (suggestion a la creation d'un chat)."""
     try:
         p = Path(path_str).expanduser().resolve()
     except (OSError, RuntimeError):
@@ -80,6 +98,34 @@ def set_workspace(path_str: str) -> tuple[Path | None, str | None]:
     WORKSPACE_FILE.parent.mkdir(parents=True, exist_ok=True)
     WORKSPACE_FILE.write_text(json.dumps({"path": str(p)}), encoding="utf-8")
     return p, None
+
+
+def prepare_workspace(folder: str) -> tuple[Path | None, bool, str | None]:
+    """
+    Resout le dossier d'un chat : soit un dossier existant, soit un nouveau.
+    Un chemin absolu (ou ~) est pris tel quel ; un simple nom atterrit sous
+    PROJECTS_ROOT. Le dossier est cree s'il n'existe pas.
+    Renvoie (chemin, existait_deja, erreur).
+    """
+    folder = (folder or "").strip()
+    if not folder:
+        return None, False, "Indique un dossier de projet."
+    p = Path(folder).expanduser()
+    if not p.is_absolute():
+        p = PROJECTS_ROOT / folder
+    try:
+        p = p.resolve()
+    except (OSError, RuntimeError):
+        return None, False, "Chemin invalide."
+    existed = p.exists()
+    if not existed:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return None, False, f"Creation impossible : {exc}"
+    if not p.is_dir():
+        return None, False, "Ce n'est pas un dossier."
+    return p, existed, None
 
 
 def _resolve(rel: str) -> tuple[Path | None, str | None]:

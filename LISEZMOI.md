@@ -51,14 +51,14 @@ est demandé à chaque nouvelle session, et redemandé automatiquement tous les
 ## Modèle
 
 Défaut : **`qwen2.5-coder:7b`** — orienté code, il suit bien mieux le protocole
-d'outils (JSON) que `mistral:7b`. Récupère-le avec `ollama pull qwen2.5-coder:7b`
-(vérifie avec `ollama list`).
+d'outils (JSON) que `mistral:7b`, et tient dans ~5 Go (Q4). Récupère-le avec
+`ollama pull qwen2.5-coder:7b` (vérifie avec `ollama list`).
 
-Pour de **gros projets**, monte en gamme — plus le modèle est capable, mieux
-l'équipe tient sur la durée :
+Pour un modèle **moins censuré / moins tabou** (utile pour un agent qui touche
+librement au système), bascule sans rien changer d'autre :
 
 ```bash
-export OLLAMA_MODEL="qwen2.5-coder:14b"   # ou :32b si la machine suit
+export OLLAMA_MODEL="dolphin3"        # Dolphin 3.0 (Llama 3.1 8B), non censuré
 python app.py
 ```
 
@@ -66,21 +66,45 @@ N'importe quel modèle Ollama fonctionne (`export OLLAMA_MODEL="…"`). La pasti
 du panneau gauche passe au rouge avec « Modèle absent » si le nom ne correspond
 à rien d'installé.
 
-## Espace de travail
+### Machine modeste (ex. 12 Go RAM, 6 cœurs, CPU)
 
-Le champ « Espace de travail » du panneau gauche fixe le dossier sur lequel
-l'équipe agit. Par défaut, le **Bureau**. Le navigateur de fichiers permet de
-parcourir l'arborescence et de **joindre un fichier** à la demande (un clic).
+Reste sur un **7–8B quantifié** (~5 Go) : `qwen2.5-coder:7b`, `dolphin3`, ou
+`dolphin-mistral` (le plus léger). La fenêtre de contexte et les threads sont
+réglables pour maîtriser la RAM et le CPU :
 
-Toutes les opérations fichier sont **confinées à cet espace** : un chemin qui
-tenterait d'en sortir est refusé. Le shell s'exécute dans l'espace, avec un
-délai maximal et un garde-fou contre quelques commandes destructrices.
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `OLLAMA_MODEL` | modèle Ollama | `qwen2.5-coder:7b` |
+| `OLLAMA_NUM_CTX` | taille du contexte (⇒ RAM) | `8192` |
+| `OLLAMA_NUM_THREAD` | threads CPU (`0` = auto) | `0` |
+
+Un 14B/32B donne de meilleurs résultats mais demande plus de RAM et rame en CPU
+— à réserver aux machines qui suivent.
+
+## Un chat = un dossier de projet
+
+À la création d'un chat, tu choisis son **dossier de projet** :
+
+- un **nom simple** (ex. `mon-site`) → un nouveau dossier est créé sous la
+  racine des projets (`~/AtelierProjets` par défaut) ;
+- un **chemin absolu** (ex. `/home/moi/site`) → le dossier existant est ouvert
+  (créé s'il n'existe pas encore).
+
+Chaque chat agit **uniquement dans son dossier**. Le bouton *changer* (panneau
+gauche) permet de rebrancher un chat sur un autre dossier. Le navigateur de
+fichiers montre l'arborescence du chat courant ; un clic **joint un fichier** à
+la demande.
+
+Toutes les opérations fichier sont **confinées au dossier du chat** : un chemin
+qui tenterait d'en sortir est refusé. Le shell s'exécute dans ce dossier, avec
+un délai maximal et un garde-fou contre quelques commandes destructrices.
 
 Variables d'environnement utiles :
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `ATELIER_WORKSPACE` | dossier de travail initial | `~/Desktop` |
+| `ATELIER_PROJECTS` | racine des dossiers créés par nom | `~/AtelierProjets` |
+| `ATELIER_WORKSPACE` | dossier par défaut suggéré | `~/Desktop` |
 | `ATELIER_ALLOW_SHELL` | `0` pour couper le shell | `1` |
 | `ATELIER_RUN_TIMEOUT` | délai max d'une commande (s) | `120` |
 | `ATELIER_MAX_STEPS` | tours d'outils max par cycle | `16` |

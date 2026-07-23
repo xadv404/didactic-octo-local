@@ -164,7 +164,7 @@ def _safe_id(conv_id: str) -> bool:
     return bool(conv_id) and all(c.isalnum() or c in "-_" for c in conv_id)
 
 
-def new_conversation(title: str = "") -> dict:
+def new_conversation(title: str = "", workspace: str = "") -> dict:
     with _LOCK:
         _ensure_dirs()
         conv_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(3)
@@ -172,6 +172,7 @@ def new_conversation(title: str = "") -> dict:
         conv = {
             "id": conv_id,
             "title": (title or "Nouvelle conversation").strip()[:80],
+            "workspace": workspace or "",
             "created": now,
             "updated": now,
             "seq": 0,
@@ -202,6 +203,7 @@ def _index_upsert(conv: dict) -> None:
     entry = {
         "id": conv["id"],
         "title": conv["title"],
+        "workspace": conv.get("workspace", ""),
         "created": conv["created"],
         "updated": conv["updated"],
         "message_count": len(conv["messages"]),
@@ -217,6 +219,23 @@ def rename_conversation(conv_id: str, title: str) -> bool:
         if not conv:
             return False
         conv["title"] = title.strip()[:80] or conv["title"]
+        conv["updated"] = _now()
+        _write_json(_conv_path(conv_id), conv)
+        _index_upsert(conv)
+        return True
+
+
+def conversation_workspace(conv_id: str) -> str:
+    conv = load_conversation(conv_id)
+    return conv.get("workspace", "") if conv else ""
+
+
+def set_conversation_workspace(conv_id: str, workspace: str) -> bool:
+    with _LOCK:
+        conv = load_conversation(conv_id)
+        if not conv:
+            return False
+        conv["workspace"] = workspace or ""
         conv["updated"] = _now()
         _write_json(_conv_path(conv_id), conv)
         _index_upsert(conv)
@@ -284,6 +303,7 @@ def page_messages(conv_id: str, before_seq: int | None = None, limit: int = 25) 
         "has_more": has_more,
         "oldest_seq": window[0]["seq"] if window else None,
         "title": conv["title"],
+        "workspace": conv.get("workspace", ""),
     }
 
 
