@@ -34,19 +34,57 @@ Coordinateur (décide) : terminé, ou nouvelle consigne → cycle suivant
 - **Mot de passe + session cookie.** L'accès est protégé ; la session tient
   **15 jours** puis redemande le mot de passe.
 
-## Installation
+## Installation sur un VPS Ubuntu (git clone + install.sh)
 
 ```bash
-cd atelier-agents
-pip install -r requirements.txt
-python app.py
+git clone <url-du-depot> atelier
+cd atelier
+bash install.sh      # venv + modules + Chromium (Playwright) + Ollama + modèles
+./run.sh             # lance le serveur (démarre Ollama au besoin)
 ```
 
-Ouvre `http://localhost:5000`, ou `http://IP_DU_VPS:5000` depuis une autre machine.
+Puis ouvre `http://IP_DU_VPS:5000` (ou `http://localhost:5000`).
 
-À la **première ouverture**, tu définis le mot de passe de l'atelier. Ensuite il
-est demandé à chaque nouvelle session, et redemandé automatiquement tous les
-15 jours.
+`install.sh` met tout en place et génère `run.sh` (qui porte les variables
+d'environnement : modèles, mot de passe, dossiers). Réglages possibles avant
+l'installation, p. ex. :
+
+```bash
+ATELIER_MODEL_CODE=qwen2.5-coder:7b ATELIER_MODEL_REASON=qwen2.5:7b bash install.sh
+```
+
+### Mot de passe
+
+Le mot de passe par défaut est **`amexuhqia1337`** (semé au premier lancement
+via `ATELIER_PASSWORD`). Pour le changer : édite `ATELIER_PASSWORD` dans
+`run.sh`, ou supprime `data/auth.json` et rouvre la page pour en définir un
+nouveau. La session tient **15 jours** puis le mot de passe est redemandé.
+
+### Test interne
+
+```bash
+source .venv/bin/activate
+python selftest.py   # vérifie tout, sans Ollama ni réseau
+```
+
+## Architecture (fichiers courts, ~60–300 lignes chacun)
+
+| Fichier | Rôle |
+|---|---|
+| `config.py` | toutes les constantes et variables d'environnement |
+| `jsonstore.py` | primitives JSON (verrou, écritures atomiques, init) |
+| `auth.py` | mot de passe (hash) + session, semis du mot de passe |
+| `conversations.py` | conversations, index, messages, pagination |
+| `memory.py` | journal des actions + mémoire + historique |
+| `workspace.py` | dossier par chat, résolution confinée |
+| `fileops.py` | outils fichier + shell |
+| `websearch.py` | recherche web (Playwright + repli requêtes) |
+| `toolbox.py` | registre des outils + exécution |
+| `prompts.py` | consignes système des agents |
+| `llm.py` | accès Ollama + santé |
+| `team.py` | orchestration (coordinateur + cycles) |
+| `server.py` | routes Flask |
+| `app.py` | point d'entrée |
 
 ## Modèle
 
@@ -88,27 +126,23 @@ ollama pull qwen2.5:7b          # réflexion / plan / relecture
 ollama pull qwen2.5-coder:7b    # développement
 ```
 
-Ils pèsent ~5 Go chacun (≈10 Go au total, dans ton budget disque). Sur 12 Go de
-RAM, un seul est chargé à la fois : Ollama permute d'un rôle à l'autre (ça
-ajoute un temps de chargement à chaque changement d'agent). Pour **tout faire
-tourner sur un seul modèle** (zéro permutation), mets la même valeur partout,
-p. ex. `export ATELIER_MODEL_COORDINATEUR=qwen2.5-coder:7b` (idem pour les
-autres), ou n'installe que celui-là.
+Ils pèsent ~5 Go chacun (≈10 Go au total). `install.sh` les récupère tout seul.
 
-### Machine modeste (ex. 12 Go RAM, 6 cœurs, CPU)
+### VPS 24 Go RAM / 8 cœurs (CPU)
 
-Reste sur un **7–8B quantifié** (~5 Go) : `qwen2.5-coder:7b`, `dolphin3`, ou
-`dolphin-mistral` (le plus léger). La fenêtre de contexte et les threads sont
-réglables pour maîtriser la RAM et le CPU :
+Confortable : les **deux** modèles 7B tiennent en RAM en même temps (~10 Go),
+donc Ollama n'a pas à permuter entre le raisonnement et le code. Les défauts
+conviennent tels quels ; `OLLAMA_NUM_CTX=8192` laisse de la marge (tu peux
+monter à `12288`/`16384` si tu veux plus de contexte).
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `OLLAMA_MODEL` | modèle Ollama | `qwen2.5-coder:7b` |
+| `OLLAMA_MODEL` | modèle développeur / base | `qwen2.5-coder:7b` |
 | `OLLAMA_NUM_CTX` | taille du contexte (⇒ RAM) | `8192` |
 | `OLLAMA_NUM_THREAD` | threads CPU (`0` = auto) | `0` |
 
-Un 14B/32B donne de meilleurs résultats mais demande plus de RAM et rame en CPU
-— à réserver aux machines qui suivent.
+Pour un modèle **moins tabou** sur le dev, `export OLLAMA_MODEL=dolphin3`.
+Un 14B (`qwen2.5-coder:14b`) passe sur 24 Go mais rame davantage en CPU pur.
 
 ## Un chat = un dossier de projet
 
@@ -155,16 +189,25 @@ Tout est déjà en place (`manifest.webmanifest`, balises Apple, icônes dans
 ouverture depuis l'écran d'accueil, saisis le mot de passe une fois — il tient
 ensuite 15 jours, comme dans le navigateur.
 
-## Recherche web
+## Recherche web (Playwright + Chromium headless)
 
-Le développeur dispose de l'outil `web_search`. Par défaut DuckDuckGo, sans clé
-(deux interfaces tentées à la suite). **DuckDuckGo bloque fréquemment les IP de
-datacenter** : sur un VPS la recherche peut échouer. Pour une recherche fiable,
-prends une clé Brave (tier gratuit) :
+Le développeur dispose de l'outil `web_search`. Par défaut, il interroge
+DuckDuckGo dans un **Chromium headless** piloté par **Playwright** — un vrai
+navigateur, ce qui passe bien mieux les blocages qu'une simple requête HTTP
+(important sur un VPS). `install.sh` installe Chromium (`playwright install
+chromium`). En cas d'échec, l'agent bascule sur des requêtes HTTP directes.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `ATELIER_SEARCH` | `playwright` ou `requests` | `playwright` |
+| `ATELIER_PW_TIMEOUT` | délai de chargement (ms) | `20000` |
+| `ATELIER_PW_HEADLESS` | `0` pour voir le navigateur | `1` |
+
+Pour une recherche encore plus fiable, une clé Brave (tier gratuit) prend le
+dessus si elle est fournie :
 
 ```bash
 export BRAVE_API_KEY="ta-cle"
-python app.py
 ```
 
 ## Données
@@ -208,11 +251,11 @@ New-NetFirewallRule -DisplayName "Atelier" -Direction Inbound -LocalPort 5000 `
 
 ## Régler l'équipe
 
-Les consignes de chaque agent sont en haut de `agents.py`
-(`COORD_BRIEF_SYSTEM`, `ARCHITECT_SYSTEM`, `_developer_system`,
-`REVIEWER_SYSTEM`, `COORD_DECISION_SYSTEM`). Les outils du développeur sont
-dans `tools.py` (dictionnaire `TOOLS` + répartiteur `execute`). La persistance
-et la mémoire sont dans `store.py`.
+Les consignes de chaque agent sont dans `prompts.py`. L'orchestration (cycles,
+décision, boucle d'outils) est dans `team.py`. Les outils du développeur sont
+déclarés dans `toolbox.py` (`TOOLS` + `execute`) et implémentés dans
+`fileops.py` / `websearch.py`. La persistance et la mémoire sont dans
+`conversations.py` et `memory.py`.
 
 ## Diagnostic
 

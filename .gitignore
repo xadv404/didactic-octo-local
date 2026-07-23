@@ -9,6 +9,9 @@ __pycache__/
 venv/
 env/
 
+# Genere par install.sh
+run.sh
+
 # OS / editeurs
 .DS_Store
 Thumbs.db
