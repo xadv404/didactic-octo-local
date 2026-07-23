@@ -50,17 +50,21 @@ est demandé à chaque nouvelle session, et redemandé automatiquement tous les
 
 ## Modèle
 
-Défaut : `mistral:7b-instruct`. Vérifie sa présence avec `ollama list`, sinon
-`ollama pull mistral:7b-instruct`. Pour en changer :
+Défaut : **`qwen2.5-coder:7b`** — orienté code, il suit bien mieux le protocole
+d'outils (JSON) que `mistral:7b`. Récupère-le avec `ollama pull qwen2.5-coder:7b`
+(vérifie avec `ollama list`).
+
+Pour de **gros projets**, monte en gamme — plus le modèle est capable, mieux
+l'équipe tient sur la durée :
 
 ```bash
-export OLLAMA_MODEL="nom-exact-du-modele"
+export OLLAMA_MODEL="qwen2.5-coder:14b"   # ou :32b si la machine suit
 python app.py
 ```
 
-La pastille du panneau gauche passe au rouge avec « Modèle absent » si le nom
-ne correspond à rien d'installé. Pour de gros projets, un modèle plus capable
-(14B+, ou un modèle orienté code) suit bien mieux le protocole d'outils.
+N'importe quel modèle Ollama fonctionne (`export OLLAMA_MODEL="…"`). La pastille
+du panneau gauche passe au rouge avec « Modèle absent » si le nom ne correspond
+à rien d'installé.
 
 ## Espace de travail
 
@@ -82,6 +86,21 @@ Variables d'environnement utiles :
 | `ATELIER_MAX_STEPS` | tours d'outils max par cycle | `16` |
 | `ATELIER_MAX_CYCLES` | cycles d'équipe max | `2` |
 | `ATELIER_DATA` | dossier des données | `./data` |
+
+## Ajouter à l'écran d'accueil (iOS / Android)
+
+L'atelier est une **PWA** : tu peux l'installer comme une app.
+
+- **iPhone / iPad (Safari)** : ouvre l'atelier, touche le bouton *Partager* →
+  **« Sur l'écran d'accueil »**. L'icône « A. » apparaît ; l'app se lance en
+  **plein écran** (sans barre Safari), avec la barre d'état gérée et la zone du
+  *home indicator* respectée.
+- **Android (Chrome)** : menu ⋮ → **« Installer l'application »**.
+
+Tout est déjà en place (`manifest.webmanifest`, balises Apple, icônes dans
+`static/`). L'app installée garde **sa propre session** : à la première
+ouverture depuis l'écran d'accueil, saisis le mot de passe une fois — il tient
+ensuite 15 jours, comme dans le navigateur.
 
 ## Recherche web
 

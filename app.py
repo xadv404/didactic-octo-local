@@ -12,6 +12,7 @@ le mot de passe.
 
 from functools import wraps
 from pathlib import Path
+import json
 
 from flask import (Flask, render_template, request, jsonify, Response,
                    session, redirect, url_for)
@@ -93,6 +94,30 @@ def session_info():
 @login_required
 def index():
     return render_template("index.html")
+
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    """Manifeste PWA — permet « Ajouter à l'écran d'accueil » et le mode autonome."""
+    data = {
+        "name": "Atelier — équipe d'agents",
+        "short_name": "Atelier",
+        "description": "Équipe d'agents locale, façon Claude Code.",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait-primary",
+        "background_color": "#14110f",
+        "theme_color": "#14110f",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png",
+             "purpose": "maskable"},
+        ],
+    }
+    return Response(json.dumps(data, ensure_ascii=False),
+                    mimetype="application/manifest+json")
 
 
 # --------------------------------------------------------------------------

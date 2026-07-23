@@ -28,7 +28,9 @@ import store
 import tools
 
 OLLAMA_URL = tools.os.environ.get("OLLAMA_URL", "http://localhost:11434")
-MODEL = tools.os.environ.get("OLLAMA_MODEL", "mistral:7b-instruct")
+# Defaut oriente code et appels d'outils : nettement meilleur que mistral:7b
+# pour suivre le protocole JSON du developpeur. Surchargeable via OLLAMA_MODEL.
+MODEL = tools.os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 MAX_STEPS = int(tools.os.environ.get("ATELIER_MAX_STEPS", "16"))
 MAX_CYCLES = int(tools.os.environ.get("ATELIER_MAX_CYCLES", "2"))
