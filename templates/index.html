@@ -131,6 +131,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .badge{font-family:var(--mono);font-size:10px;width:19px;height:19px;border-radius:50%;display:flex;
   align-items:center;justify-content:center;border:1.5px solid;flex-shrink:0}
 .stage-name{font-size:13.5px;font-weight:600}
+.stage-model{font-family:var(--mono);font-size:10px;color:var(--dim);background:var(--panel-2);
+  padding:1px 6px;border-radius:4px;white-space:nowrap}
 .stage-note{font-size:11.5px;color:var(--dim);margin-left:auto;text-align:right}
 .stage-body{padding:13px 15px;font-size:13.5px;line-height:1.62;white-space:pre-wrap;word-wrap:break-word}
 .stage-body strong{font-weight:600}
@@ -301,8 +303,9 @@ async function health(){
     const j=await r.json();
     if(j.status==='connected'){
       m.textContent=j.model;
-      if(j.model_present===false){d.className='dot no';t.textContent='Modèle absent — ollama list';}
-      else{d.className='dot ok';t.textContent='Prêt · '+j.search;}
+      if(j.missing&&j.missing.length){d.className='dot no';t.textContent='À installer : '+j.missing.join(', ');t.title='ollama pull '+j.missing.join(' ; ollama pull ');}
+      else if(j.model_present===false){d.className='dot no';t.textContent='Modèle absent — ollama list';}
+      else{d.className='dot ok';t.textContent='Prêt · '+j.search;t.title='';}
     }else{d.className='dot no';t.textContent='Ollama hors ligne';m.textContent=j.model||'—';}
   }catch{d.className='dot no';t.textContent='Serveur injoignable';}
 }
@@ -489,10 +492,12 @@ const NUM={coordinateur:'C',architecte:'A',developpeur:'D',relecteur:'R'};
 function cycleSep(text){
   const c=document.createElement('div');c.className='cycle';c.textContent=text;inner().appendChild(c);scroll();
 }
-function openStage(stage,label,note){
+function openStage(stage,label,note,model){
   const card=document.createElement('div');card.className='stage s-'+stage;
   card.innerHTML='<div class="stage-top"><span class="badge">'+(NUM[stage]||'·')+'</span>'+
-    '<span class="stage-name">'+esc(label)+'</span><span class="stage-note">'+esc(note||'')+'</span></div>'+
+    '<span class="stage-name">'+esc(label)+'</span>'+
+    (model?'<span class="stage-model">'+esc(model)+'</span>':'')+
+    '<span class="stage-note">'+esc(note||'')+'</span></div>'+
     '<div class="stage-body caret"></div>';
   inner().appendChild(card);
   liveBody=card.querySelector('.stage-body');liveBody.dataset.raw='';curTrace=null;
@@ -571,7 +576,7 @@ function handleEvent(m){
       document.querySelectorAll('.conv').forEach(c=>c.classList.toggle('on',c.dataset.id===convId));
       break;
     case 'cycle': cycleSep(m.label); break;
-    case 'stage_start': openStage(m.stage,m.label,m.note); break;
+    case 'stage_start': openStage(m.stage,m.label,m.note,m.model); break;
     case 'token':
       if(liveBody){liveBody.dataset.raw+=m.text;liveBody.innerHTML=renderMd(liveBody.dataset.raw);liveBody.classList.add('caret');scroll();}
       break;

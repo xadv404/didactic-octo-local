@@ -66,6 +66,35 @@ N'importe quel modèle Ollama fonctionne (`export OLLAMA_MODEL="…"`). La pasti
 du panneau gauche passe au rouge avec « Modèle absent » si le nom ne correspond
 à rien d'installé.
 
+### Un modèle par agent
+
+Chaque rôle a **son propre modèle** : le raisonnement et la planification
+tournent sur un modèle généraliste, le développement sur un modèle orienté
+code. Les cartes d'étapes affichent le modèle utilisé, et la pastille passe au
+rouge en listant les modèles à installer.
+
+| Rôle | Variable | Défaut |
+|---|---|---|
+| Coordinateur (réfléchir) | `ATELIER_MODEL_COORDINATEUR` | `qwen2.5:7b` |
+| Architecte (planifier) | `ATELIER_MODEL_ARCHITECTE` | `qwen2.5:7b` |
+| Développeur (coder) | `ATELIER_MODEL_DEVELOPPEUR` | `qwen2.5-coder:7b` |
+| Relecteur (relire) | `ATELIER_MODEL_RELECTEUR` | `qwen2.5:7b` |
+| Mémoire (distiller) | `ATELIER_MODEL_MEMOIRE` | = coordinateur |
+
+Les deux modèles par défaut à récupérer :
+
+```bash
+ollama pull qwen2.5:7b          # réflexion / plan / relecture
+ollama pull qwen2.5-coder:7b    # développement
+```
+
+Ils pèsent ~5 Go chacun (≈10 Go au total, dans ton budget disque). Sur 12 Go de
+RAM, un seul est chargé à la fois : Ollama permute d'un rôle à l'autre (ça
+ajoute un temps de chargement à chaque changement d'agent). Pour **tout faire
+tourner sur un seul modèle** (zéro permutation), mets la même valeur partout,
+p. ex. `export ATELIER_MODEL_COORDINATEUR=qwen2.5-coder:7b` (idem pour les
+autres), ou n'installe que celui-là.
+
 ### Machine modeste (ex. 12 Go RAM, 6 cœurs, CPU)
 
 Reste sur un **7–8B quantifié** (~5 Go) : `qwen2.5-coder:7b`, `dolphin3`, ou

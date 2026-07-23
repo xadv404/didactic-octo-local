@@ -28,11 +28,28 @@ import store
 import tools
 
 OLLAMA_URL = tools.os.environ.get("OLLAMA_URL", "http://localhost:11434")
-# Defaut oriente code et appels d'outils : nettement meilleur que mistral:7b
-# pour suivre le protocole JSON du developpeur. Tient dans ~5 Go (Q4) donc OK
-# sur 12 Go de RAM en CPU. Surchargeable via OLLAMA_MODEL (ex. dolphin3 pour un
-# modele moins censure, qwen2.5-coder:14b si la machine suit).
+# Modele de base (repli pour tous les roles). Oriente code, tient dans ~5 Go (Q4).
+# Surchargeable via OLLAMA_MODEL (ex. dolphin3 pour un modele moins censure).
 MODEL = tools.os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+
+# Un modele par agent : le raisonnement/planification profite d'un modele
+# generaliste, le developpement d'un modele oriente code. Chaque role est
+# surchargeable independamment ; a defaut il retombe sur une valeur adaptee.
+_env = tools.os.environ.get
+MODEL_COORDINATEUR = _env("ATELIER_MODEL_COORDINATEUR", "qwen2.5:7b")   # reflechir
+MODEL_ARCHITECTE   = _env("ATELIER_MODEL_ARCHITECTE",   "qwen2.5:7b")   # planifier
+MODEL_DEVELOPPEUR  = _env("ATELIER_MODEL_DEVELOPPEUR",  MODEL)          # coder
+MODEL_RELECTEUR    = _env("ATELIER_MODEL_RELECTEUR",    "qwen2.5:7b")   # relire
+MODEL_MEMOIRE      = _env("ATELIER_MODEL_MEMOIRE",      MODEL_COORDINATEUR)
+
+# Modeles distincts effectivement utilises (pour le controle de sante / pull).
+ROLE_MODELS = {
+    "coordinateur": MODEL_COORDINATEUR,
+    "architecte": MODEL_ARCHITECTE,
+    "developpeur": MODEL_DEVELOPPEUR,
+    "relecteur": MODEL_RELECTEUR,
+    "memoire": MODEL_MEMOIRE,
+}
 
 # Reglages ressources adaptes a une petite machine (12 Go RAM, 6 cœurs, CPU).
 # num_ctx borne la fenetre de contexte (donc la RAM) ; num_thread cadre le CPU.
@@ -48,8 +65,9 @@ FILE_EXCERPT_CHARS = 6000
 # Acces au modele
 # --------------------------------------------------------------------------
 
-def ollama_stream(system, prompt, temperature=0.6, max_tokens=1200):
+def ollama_stream(system, prompt, temperature=0.6, max_tokens=1200, model=None):
     """Diffuse la reponse du modele token par token."""
+    model = model or MODEL
     options = {"temperature": temperature, "top_p": 0.9,
                "num_predict": max_tokens, "num_ctx": NUM_CTX}
     if NUM_THREAD > 0:
@@ -57,12 +75,12 @@ def ollama_stream(system, prompt, temperature=0.6, max_tokens=1200):
     try:
         r = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": MODEL, "system": system, "prompt": prompt,
+            json={"model": model, "system": system, "prompt": prompt,
                   "stream": True, "options": options},
             stream=True, timeout=600,
         )
         if r.status_code != 200:
-            yield f"[Ollama a repondu {r.status_code}. Verifie le modele '{MODEL}' : ollama list]"
+            yield f"[Ollama a repondu {r.status_code}. Verifie le modele '{model}' : ollama list]"
             return
         for line in r.iter_lines():
             if not line:
@@ -83,9 +101,9 @@ def ollama_stream(system, prompt, temperature=0.6, max_tokens=1200):
         yield f"[Erreur : {exc}]"
 
 
-def _complete(system, prompt, temperature=0.5, max_tokens=1000) -> str:
+def _complete(system, prompt, temperature=0.5, max_tokens=1000, model=None) -> str:
     """Version non diffusee, pour les etapes internes."""
-    return "".join(ollama_stream(system, prompt, temperature, max_tokens))
+    return "".join(ollama_stream(system, prompt, temperature, max_tokens, model))
 
 
 def sse(event, **payload):
@@ -231,11 +249,11 @@ def _workspace_snapshot() -> str:
 # Etapes reutilisables (generateurs qui diffusent ET renvoient le texte)
 # --------------------------------------------------------------------------
 
-def _stream_stage(stage, label, note, system, prompt, temp, tokens):
+def _stream_stage(stage, label, note, system, prompt, temp, tokens, model=None):
     """Diffuse une etape d'agent et renvoie son texte complet."""
-    yield sse("stage_start", stage=stage, label=label, note=note)
+    yield sse("stage_start", stage=stage, label=label, note=note, model=model or MODEL)
     text = ""
-    for tok in ollama_stream(system, prompt, temp, tokens):
+    for tok in ollama_stream(system, prompt, temp, tokens, model):
         text += tok
         yield sse("token", text=tok)
     yield sse("stage_end", stage=stage)
@@ -245,7 +263,8 @@ def _stream_stage(stage, label, note, system, prompt, temp, tokens):
 def _developer_loop(conv_id, context, brief, cycle):
     """Boucle d'outils du developpeur. Renvoie la liste des actions resumees."""
     yield sse("stage_start", stage="developpeur", label="Developpeur",
-              note=f"cycle {cycle} — agit sur fichiers, shell, web")
+              note=f"cycle {cycle} — agit sur fichiers, shell, web",
+              model=MODEL_DEVELOPPEUR)
     dev_system = _developer_system()
     scratch = f"{context}\n\n[FEUILLE DE ROUTE]\n{brief}\n\n[JOURNAL]\n(vide)"
     actions = []
@@ -254,7 +273,7 @@ def _developer_loop(conv_id, context, brief, cycle):
     for step in range(1, MAX_STEPS + 1):
         yield sse("agent_step", n=step, total=MAX_STEPS)
         reply = ""
-        for tok in ollama_stream(dev_system, scratch, 0.35, 900):
+        for tok in ollama_stream(dev_system, scratch, 0.35, 900, MODEL_DEVELOPPEUR):
             reply += tok
             yield sse("token", text=tok)
 
@@ -328,7 +347,7 @@ def run_team(conv_id, question, file_name="", file_text="", workspace=""):
     yield sse("cycle", label="Coordination")
     brief = yield from _stream_stage(
         "coordinateur", "Coordinateur", "cadre et pilote l'equipe",
-        COORD_BRIEF_SYSTEM, context, 0.6, 600)
+        COORD_BRIEF_SYSTEM, context, 0.6, 600, MODEL_COORDINATEUR)
     store.log_action(conv_id, {"type": "brief", "content": brief})
 
     all_actions = []
@@ -343,7 +362,8 @@ def run_team(conv_id, question, file_name="", file_text="", workspace=""):
         if cycle == 1:
             plan = yield from _stream_stage(
                 "architecte", "Architecte", "pose le plan",
-                ARCHITECT_SYSTEM, f"{context}\n\n[BRIEF DU COORDINATEUR]\n{brief}", 0.6, 900)
+                ARCHITECT_SYSTEM, f"{context}\n\n[BRIEF DU COORDINATEUR]\n{brief}",
+                0.6, 900, MODEL_ARCHITECTE)
             store.log_action(conv_id, {"type": "plan", "content": plan})
             dev_brief = plan
         else:
@@ -361,7 +381,7 @@ def run_team(conv_id, question, file_name="", file_text="", workspace=""):
                          f"[ETAT FINAL DE L'ESPACE]\n{_workspace_snapshot()}")
         review = yield from _stream_stage(
             "relecteur", "Relecteur", "verifie le livrable",
-            REVIEWER_SYSTEM, review_prompt, 0.4, 900)
+            REVIEWER_SYSTEM, review_prompt, 0.4, 900, MODEL_RELECTEUR)
         store.log_action(conv_id, {"type": "review", "cycle": cycle, "content": review})
 
         if cycle >= MAX_CYCLES:
@@ -373,7 +393,7 @@ def run_team(conv_id, question, file_name="", file_text="", workspace=""):
                            f"[ETAT DE L'ESPACE]\n{_workspace_snapshot()}")
         decision = yield from _stream_stage(
             "coordinateur", "Coordinateur", f"evalue le cycle {cycle}",
-            COORD_DECISION_SYSTEM, decision_prompt, 0.4, 400)
+            COORD_DECISION_SYSTEM, decision_prompt, 0.4, 400, MODEL_COORDINATEUR)
         store.log_action(conv_id, {"type": "decision", "cycle": cycle, "content": decision})
         done, consigne = _parse_decision(decision)
         if done or not consigne:
@@ -444,7 +464,7 @@ def _assemble_final(brief, plan, journal, review):
 
 def _update_memory(conv_id, question, answer):
     prompt = f"Question : {question}\n\nReponse/relecture :\n{answer[:2000]}"
-    raw = _complete(MEMORY_SYSTEM, prompt, 0.3, 200).strip()
+    raw = _complete(MEMORY_SYSTEM, prompt, 0.3, 200, MODEL_MEMOIRE).strip()
     if not raw or raw.upper().startswith("RIEN") or raw.startswith("["):
         return
     for line in raw.splitlines():
@@ -457,8 +477,19 @@ def _update_memory(conv_id, question, answer):
 # Sante d'Ollama
 # --------------------------------------------------------------------------
 
+def _model_present(name, installed):
+    """Ollama tolere l'absence de tag :latest — compare le nom nu aussi."""
+    base = name.split(":")[0]
+    return any(n == name or n.split(":")[0] == base for n in installed)
+
+
 def health():
     r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
     names = [m["name"] for m in r.json().get("models", [])]
-    return {"status": "connected", "model": MODEL, "model_present": MODEL in names,
+    roles = {role: {"model": m, "present": _model_present(m, names)}
+             for role, m in ROLE_MODELS.items()}
+    missing = sorted({info["model"] for info in roles.values() if not info["present"]})
+    return {"status": "connected", "model": MODEL,
+            "model_present": _model_present(MODEL, names),
+            "roles": roles, "missing": missing,
             "available": names, "search": "brave" if tools.BRAVE_KEY else "duckduckgo"}
