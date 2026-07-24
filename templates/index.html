@@ -171,6 +171,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .clip.on{display:flex}
 .clip button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px}
 .clip button:hover{color:var(--rust)}
+.uploadbar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.upl{background:var(--panel);border:1px solid var(--edge);color:var(--dim);border-radius:6px;
+  padding:6px 11px;font-family:inherit;font-size:11.5px;cursor:pointer}
+.upl:hover{border-color:#5c4a32;color:var(--ochre)}
+.uplmsg{font-size:11px;color:var(--dim);font-family:var(--mono)}
+.uplmsg.ok{color:var(--sage)}
+.uplmsg.err{color:var(--rust)}
 .row{display:flex;gap:9px;align-items:flex-end}
 textarea{flex:1;background:var(--panel);border:1px solid var(--edge);border-radius:7px;color:var(--ink);
   padding:12px 14px;font-family:inherit;font-size:14px;resize:none;min-height:48px;max-height:170px;line-height:1.5}
@@ -240,6 +247,12 @@ textarea::placeholder{color:var(--dim)}
           <span id="clipName"></span>
           <button onclick="unclip()" title="Détacher">×</button>
         </div>
+        <div class="uploadbar">
+          <input type="file" id="fileInput" multiple style="display:none">
+          <button class="upl" id="uplBtn" onclick="document.getElementById('fileInput').click()"
+                  title="Envoyer des fichiers dans le dossier du chat">⤒ Envoyer fichier / ZIP</button>
+          <span class="uplmsg" id="uplMsg"></span>
+        </div>
         <div class="row">
           <textarea id="q" rows="1" placeholder="Décris ce que l'équipe doit construire…"></textarea>
           <button class="go" id="go" onclick="run()">Lancer</button>
@@ -253,12 +266,13 @@ textarea::placeholder{color:var(--dim)}
 <div class="modal" id="modal">
   <div class="modal-card">
     <div class="modal-title" id="modalTitle">Nouveau chat</div>
-    <label id="mTitleLabel">Titre (optionnel)</label>
+    <label id="mTitleLabel">Titre</label>
     <input id="mTitle" placeholder="ex. Site vitrine" spellcheck="false">
-    <label>Dossier du projet</label>
-    <input id="mFolder" placeholder="nom d'un nouveau dossier, ou chemin existant" spellcheck="false">
-    <div class="modal-hint">Un simple nom crée un dossier sous <span id="projRoot">…</span>.
-      Un chemin absolu (ex. <span>/home/moi/projet</span>) ouvre un dossier existant.</div>
+    <label id="mFolderLabel">Dossier existant <span style="text-transform:none;letter-spacing:0">(optionnel — avancé)</span></label>
+    <input id="mFolder" placeholder="laisser vide = dossier créé automatiquement" spellcheck="false">
+    <div class="modal-hint" id="modalHint">Un <b>dossier dédié</b> est créé pour ce chat sous
+      <span id="projRoot">…</span> : il contient sa mémoire et un sous-dossier <span>workspace/</span>
+      où vont les fichiers (et les zip envoyés). Indique un chemin seulement pour réutiliser un dossier existant.</div>
     <div class="modal-msg" id="modalMsg"></div>
     <div class="modal-row">
       <button class="mcancel" onclick="closeModal()">Annuler</button>
@@ -355,6 +369,28 @@ async function loadFiles(path){
 function attach(path,name){picked={path,name};document.getElementById('clipName').textContent='Joint : '+name;document.getElementById('clip').classList.add('on');}
 function unclip(){picked=null;document.getElementById('clip').classList.remove('on');}
 
+/* ---------- envoi de fichiers (zip inclus) ---------- */
+async function uploadFiles(files){
+  if(!files||!files.length)return;
+  const msg=document.getElementById('uplMsg');
+  if(!convId){msg.className='uplmsg err';msg.textContent='Ouvre ou crée un chat d’abord.';return}
+  const fd=new FormData();
+  for(const f of files) fd.append('file',f);
+  msg.className='uplmsg';msg.textContent='Envoi de '+files.length+' fichier(s)…';
+  document.getElementById('uplBtn').disabled=true;
+  try{
+    const r=await fetch('/api/conversation/'+convId+'/upload',{method:'POST',body:fd});
+    const j=await r.json();
+    if(j.error){msg.className='uplmsg err';msg.textContent=j.error;return}
+    let zips=0,n=0;
+    (j.results||[]).forEach(x=>{ if(x.ok){n++; if(x.extracted!=null) zips+=x.extracted;} });
+    msg.className='uplmsg ok';
+    msg.textContent=n+' fichier(s) reçu(s)'+(zips?' · '+zips+' extrait(s) du zip':'')+' → workspace/';
+    loadFiles('.');
+  }catch{msg.className='uplmsg err';msg.textContent='Envoi impossible.';}
+  finally{document.getElementById('uplBtn').disabled=false;document.getElementById('fileInput').value='';}
+}
+
 /* ---------- conversations ---------- */
 async function loadConversations(){
   const box=document.getElementById('convs');
@@ -382,17 +418,20 @@ function openFolderDialog(changing){
   document.getElementById('mTitleLabel').style.display=changing?'none':'block';
   document.getElementById('mTitle').style.display=changing?'none':'block';
   document.getElementById('mTitle').value='';
+  document.getElementById('mFolderLabel').style.display=changing?'none':'block';
+  document.getElementById('modalHint').style.display=changing?'none':'block';
+  document.getElementById('mFolder').placeholder=changing?'chemin du dossier':'laisser vide = dossier créé automatiquement';
   document.getElementById('mFolder').value=changing?wsPath:'';
   document.getElementById('modalMsg').textContent='';
   document.getElementById('modal').classList.add('on');
-  setTimeout(()=>document.getElementById('mFolder').focus(),30);
+  setTimeout(()=>document.getElementById(changing?'mFolder':'mTitle').focus(),30);
 }
 function closeModal(){document.getElementById('modal').classList.remove('on');}
 async function submitFolder(){
   const folder=document.getElementById('mFolder').value.trim();
   const title=document.getElementById('mTitle').value.trim();
   const msg=document.getElementById('modalMsg');
-  if(!folder){msg.textContent='Indique un dossier.';return}
+  if(modalMode==='change' && !folder){msg.textContent='Indique un dossier.';return}
   const ok=document.getElementById('mOk');ok.disabled=true;
   try{
     if(modalMode==='create'){
@@ -598,7 +637,9 @@ ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefa
 ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,170)+'px'});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 document.getElementById('mFolder').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitFolder()}});
+document.getElementById('mTitle').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitFolder()}});
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
+document.getElementById('fileInput').addEventListener('change',e=>uploadFiles(e.target.files));
 
 health();loadWorkspace();setInterval(health,20000);
 (async()=>{

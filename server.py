@@ -29,7 +29,14 @@ auth.seed_password()
 app = Flask(__name__)
 app.secret_key = js.secret_key()
 app.permanent_session_lifetime = config.SESSION_DAYS * 86400
+app.config["MAX_CONTENT_LENGTH"] = config.UPLOAD_MAX
 CORS(app, supports_credentials=True)
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    mb = config.UPLOAD_MAX // (1024 * 1024)
+    return jsonify({"error": f"Fichier trop volumineux (max {mb} Mo)."}), 413
 
 
 # --------------------------------------------------------------------------
@@ -182,15 +189,41 @@ def conversations_list():
 @app.route("/api/conversations", methods=["POST"])
 @login_required
 def create_conversation():
+    """Cree une conversation avec son dossier dedie. `folder` est optionnel :
+    vide -> dossier auto ; sinon dossier existant utilise comme espace."""
     data = request.get_json(silent=True) or {}
-    path, existed, err = ws.prepare_workspace(data.get("folder", ""))
-    if err:
-        return jsonify({"error": err}), 400
-    conv = convo.new_conversation(data.get("title", ""), workspace=str(path))
+    workspace = ""
+    folder = (data.get("folder") or "").strip()
+    if folder:
+        path, _existed, err = ws.prepare_workspace(folder)
+        if err:
+            return jsonify({"error": err}), 400
+        workspace = str(path)
+    conv = convo.new_conversation(data.get("title", ""), workspace=workspace)
     return jsonify({"conversation": {"id": conv["id"], "title": conv["title"],
-                                     "workspace": str(path), "existed": existed,
+                                     "home": conv["home"], "workspace": conv["workspace"],
                                      "created": conv["created"], "updated": conv["updated"],
                                      "message_count": 0}})
+
+
+@app.route("/api/conversation/<conv_id>/upload", methods=["POST"])
+@login_required
+def upload(conv_id):
+    """Envoi de fichiers dans l'espace du chat (zip extrait automatiquement)."""
+    ws_path = convo.conversation_workspace(conv_id)
+    if not ws_path:
+        return jsonify({"error": "Conversation introuvable."}), 404
+    ws.set_active_workspace(ws_path)
+    incoming = request.files.getlist("file")
+    if not incoming:
+        return jsonify({"error": "Aucun fichier."}), 400
+    results, subdir = [], request.form.get("subdir", "")
+    for f in incoming:
+        data = f.read()
+        if not data:
+            continue
+        results.append(fileops.save_upload(f.filename, data, subdir))
+    return jsonify({"results": results, "workspace": ws_path})
 
 
 @app.route("/api/conversation/<conv_id>/workspace", methods=["POST"])
@@ -251,8 +284,7 @@ def run():
 
     conv = convo.load_conversation(conv_id) if conv_id else None
     if conv is None:
-        path, _, _ = ws.prepare_workspace(str(ws.get_workspace()))
-        conv = convo.new_conversation(workspace=str(path) if path else "")
+        conv = convo.new_conversation()      # dossier dedie auto
         conv_id = conv["id"]
 
     workspace_path = convo.conversation_workspace(conv_id)

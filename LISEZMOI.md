@@ -144,35 +144,52 @@ monter à `12288`/`16384` si tu veux plus de contexte).
 Pour un modèle **moins tabou** sur le dev, `export OLLAMA_MODEL=dolphin3`.
 Un 14B (`qwen2.5-coder:14b`) passe sur 24 Go mais rame davantage en CPU pur.
 
-## Un chat = un dossier de projet
+## Un chat = un dossier dédié
 
-À la création d'un chat, tu choisis son **dossier de projet** :
+À la création d'un chat, l'atelier lui crée **automatiquement son propre
+dossier** sous la racine des projets (`~/AtelierProjets` par défaut). Ce dossier
+est **autonome** : il contient à la fois la mémoire du fil et les fichiers du
+projet.
 
-- un **nom simple** (ex. `mon-site`) → un nouveau dossier est créé sous la
-  racine des projets (`~/AtelierProjets` par défaut) ;
-- un **chemin absolu** (ex. `/home/moi/site`) → le dossier existant est ouvert
-  (créé s'il n'existe pas encore).
+```
+~/AtelierProjets/<titre>-<id>/
+    .atelier/                 mémoire du chat (conversation, résumé, journal)
+        conversation.json
+        memory.json
+        actions.json
+    workspace/                les fichiers du projet — l'agent agit ICI
+                              (les envois et les zip extraits atterrissent ici)
+```
 
-Chaque chat agit **uniquement dans son dossier**. Le bouton *changer* (panneau
-gauche) permet de rebrancher un chat sur un autre dossier. Le navigateur de
-fichiers montre l'arborescence du chat courant ; un clic **joint un fichier** à
-la demande.
+- Il suffit de donner un **titre** au chat ; le dossier est créé pour toi.
+- Option avancée : indiquer un **dossier existant** pour que l'agent travaille
+  directement dedans (le bouton *changer* permet aussi de rebrancher un chat).
+- Supprimer un chat supprime son dossier **seulement** s'il a été créé
+  automatiquement sous la racine des projets (un dossier externe est préservé).
 
-Toutes les opérations fichier sont **confinées au dossier du chat** : un chemin
-qui tenterait d'en sortir est refusé. Le shell s'exécute dans ce dossier, avec
-un délai maximal et un garde-fou contre quelques commandes destructrices.
+L'agent est **confiné à `workspace/`** : la mémoire du chat (`.atelier/`) est
+hors de sa portée, et aucun chemin ne peut sortir du dossier. Le shell s'exécute
+dans `workspace/`, avec délai maximal et garde-fou anti-commandes destructrices.
+
+### Envoi de fichiers / ZIP depuis le web
+
+Le bouton **« ⤒ Envoyer fichier / ZIP »** (sous la zone de saisie) dépose des
+fichiers directement dans le `workspace/` du chat. Un **.zip est extrait
+automatiquement** (dans un sous-dossier à son nom), à l'abri du « zip slip ».
+Taille max réglable via `ATELIER_UPLOAD_MAX_MB` (200 Mo par défaut). Tout se
+pilote depuis l'interface : création de chats, envoi de fichiers, navigation.
 
 Variables d'environnement utiles :
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `ATELIER_PROJECTS` | racine des dossiers créés par nom | `~/AtelierProjets` |
-| `ATELIER_WORKSPACE` | dossier par défaut suggéré | `~/Desktop` |
+| `ATELIER_PROJECTS` | racine des dossiers de chat | `~/AtelierProjets` |
+| `ATELIER_UPLOAD_MAX_MB` | taille max d'un envoi | `200` |
 | `ATELIER_ALLOW_SHELL` | `0` pour couper le shell | `1` |
 | `ATELIER_RUN_TIMEOUT` | délai max d'une commande (s) | `120` |
 | `ATELIER_MAX_STEPS` | tours d'outils max par cycle | `16` |
 | `ATELIER_MAX_CYCLES` | cycles d'équipe max | `2` |
-| `ATELIER_DATA` | dossier des données | `./data` |
+| `ATELIER_DATA` | index + auth + clé de session | `./data` |
 
 ## Ajouter à l'écran d'accueil (iOS / Android)
 
@@ -212,19 +229,20 @@ export BRAVE_API_KEY="ta-cle"
 
 ## Données
 
-Tout est écrit sous `data/` (ignoré par git), découpé par rôle pour que rien ne
-soit jamais écrasé en bloc :
+La mémoire et le journal de **chaque** conversation vivent dans le dossier de
+cette conversation (`.atelier/`, voir plus haut). Le dossier `data/` (ignoré par
+git) ne garde plus que ce qui est **global** :
 
 ```
 data/
-  auth.json                     mot de passe (hash) + réglages
+  auth.json                     mot de passe (hash)
   secret.key                    clé de signature des cookies de session
-  conversations/<id>.json       messages complets d'une conversation
-  index/conversations.json      index de toutes les conversations
-  index/actions/<id>.json       journal détaillé de tout ce qui a été fait
+  index/conversations.json      registre : id → dossier, titre, dates
   memory/global.json            faits durables, tous fils confondus
-  memory/<id>.json              résumé et faits propres à une conversation
 ```
+
+Chaque dossier de chat étant autonome, on peut le déplacer ou l'archiver avec
+sa mémoire ; il suffit qu'il reste listé dans le registre pour réapparaître.
 
 ## Durée
 

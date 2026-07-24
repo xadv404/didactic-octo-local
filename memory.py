@@ -1,17 +1,21 @@
 """
-Journal des actions et memoire.
+Journal des actions et memoire, ranges dans le dossier de chaque conversation.
 
-- Journal : « tout ce qui a ete fait » dans une conversation (outils, plans…).
-- Memoire : faits durables (par fil et globaux) + resume, re-injectes dans le
-  contexte du modele au tour suivant.
-- Historique : rendu lisible de la conversation en cours, borne en taille.
+- Journal : « tout ce qui a ete fait » (outils, plans…) -> home/.atelier/actions.json
+- Memoire du fil : resume + faits          -> home/.atelier/memory.json
+- Memoire globale : faits tous fils confondus -> DATA_DIR/memory/global.json
+- Historique : rendu lisible du fil, borne en taille.
 """
 
 from __future__ import annotations
 
 import config
 import jsonstore as js
-from conversations import load_conversation
+import conversations as convo
+
+
+def _home(conv_id):
+    return convo.home_of(conv_id)
 
 
 # --------------------------------------------------------------------------
@@ -19,16 +23,21 @@ from conversations import load_conversation
 # --------------------------------------------------------------------------
 
 def log_action(conv_id: str, entry: dict) -> None:
+    home = _home(conv_id)
+    if not home:
+        return
     with js._LOCK:
-        path = config.ACTIONS_DIR / f"{conv_id}.json"
+        path = convo.actions_file(home)
         data = js.read_json(path, {"conversation": conv_id, "actions": []})
         data["actions"].append({"ts": js.now(), **entry})
         js.write_json(path, data)
 
 
 def load_actions(conv_id: str) -> list:
-    return js.read_json(config.ACTIONS_DIR / f"{conv_id}.json",
-                        {"actions": []}).get("actions", [])
+    home = _home(conv_id)
+    if not home:
+        return []
+    return js.read_json(convo.actions_file(home), {"actions": []}).get("actions", [])
 
 
 # --------------------------------------------------------------------------
@@ -46,17 +55,23 @@ def remember(conv_id: str, text: str, scope: str = "conversation") -> None:
             data.setdefault("facts", []).append({**fact, "conversation": conv_id})
             data["facts"] = data["facts"][-200:]
             js.write_json(config.GLOBAL_MEMORY_FILE, data)
-        else:
-            path = config.MEMORY_DIR / f"{conv_id}.json"
-            data = js.read_json(path, {"conversation": conv_id, "summary": "", "facts": []})
-            data.setdefault("facts", []).append(fact)
-            data["facts"] = data["facts"][-100:]
-            js.write_json(path, data)
+            return
+        home = _home(conv_id)
+        if not home:
+            return
+        path = convo.mem_file(home)
+        data = js.read_json(path, {"conversation": conv_id, "summary": "", "facts": []})
+        data.setdefault("facts", []).append(fact)
+        data["facts"] = data["facts"][-100:]
+        js.write_json(path, data)
 
 
 def set_summary(conv_id: str, summary: str) -> None:
+    home = _home(conv_id)
+    if not home:
+        return
     with js._LOCK:
-        path = config.MEMORY_DIR / f"{conv_id}.json"
+        path = convo.mem_file(home)
         data = js.read_json(path, {"conversation": conv_id, "summary": "", "facts": []})
         data["summary"] = (summary or "").strip()[:2000]
         js.write_json(path, data)
@@ -65,7 +80,8 @@ def set_summary(conv_id: str, summary: str) -> None:
 def memory_block(conv_id: str) -> str:
     """Resume du fil + faits du fil + faits globaux, borne au budget."""
     parts = []
-    conv_mem = js.read_json(config.MEMORY_DIR / f"{conv_id}.json", {})
+    home = _home(conv_id)
+    conv_mem = js.read_json(convo.mem_file(home), {}) if home else {}
     if conv_mem.get("summary"):
         parts.append("Resume de la conversation :\n" + conv_mem["summary"])
     facts = [f["text"] for f in conv_mem.get("facts", [])][-15:]
@@ -80,7 +96,7 @@ def memory_block(conv_id: str) -> str:
 
 def history_block(conv_id: str, exclude_seq=None) -> str:
     """Historique lisible du fil, borne au budget (on garde le plus recent)."""
-    conv = load_conversation(conv_id)
+    conv = convo.load_conversation(conv_id)
     if conv is None:
         return ""
     lines = []

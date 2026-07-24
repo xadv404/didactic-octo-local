@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+import zipfile
 import shutil
+import os
 import re
 
 import config
@@ -134,6 +136,51 @@ def move_path(src: str, dst: str) -> dict:
     except OSError as exc:
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "from": rel_to_workspace(s), "to": rel_to_workspace(d)}
+
+
+def _safe_extract(zip_path: Path, dest: Path) -> int:
+    """Extrait un zip dans `dest` en refusant toute entree hors de `dest`."""
+    dest = dest.resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with zipfile.ZipFile(zip_path) as z:
+        for member in z.infolist():
+            target = (dest / member.filename).resolve()
+            if target != dest and dest not in target.parents:
+                continue  # protection contre le « zip slip »
+            if member.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with z.open(member) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                count += 1
+    return count
+
+
+def save_upload(filename: str, data: bytes, subdir: str = "") -> dict:
+    """Enregistre un fichier envoye dans l'espace du chat ; extrait les zip."""
+    name = os.path.basename(filename or "").strip() or "fichier"
+    rel = f"{subdir.strip('/')}/{name}" if subdir else name
+    target, err = resolve(rel)
+    if err:
+        return {"ok": False, "error": err}
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    out = {"ok": True, "path": rel_to_workspace(target), "bytes": len(data),
+           "name": name}
+    if name.lower().endswith(".zip"):
+        try:
+            folder = target.with_suffix("")
+            out["extracted"] = _safe_extract(target, folder)
+            out["extracted_to"] = rel_to_workspace(folder)
+        except zipfile.BadZipFile:
+            out["extracted"] = 0
+            out["error"] = "Archive zip illisible."
+    return out
 
 
 def run_command(command: str) -> dict:

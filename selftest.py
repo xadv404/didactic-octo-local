@@ -11,8 +11,11 @@ complete run_team, et les routes Flask.
 
 import os
 import sys
+import io
 import json
+import zipfile
 import tempfile
+from pathlib import Path
 
 _tmp = tempfile.mkdtemp()
 os.environ.update({
@@ -56,7 +59,7 @@ assert auth.session_expired(js.now() - 16 * 86400)
 check("auth (mot de passe seme amexuhqia1337, session 15 j)")
 
 # --- conversations + pagination 25 ---
-conv = convo.new_conversation(workspace=os.environ["ATELIER_WORKSPACE"])
+conv = convo.new_conversation(title="fil principal")
 cid = conv["id"]
 for i in range(60):
     convo.add_message(cid, "user" if i % 2 == 0 else "assistant", f"message {i}")
@@ -69,10 +72,12 @@ last = convo.page_messages(cid, before_seq=older["oldest_seq"], limit=25)
 assert not last["has_more"] and last["messages"][0]["seq"] == 1
 check("conversations + pagination (25/page, remontee)")
 
-# --- index multi-json + memoire ---
+# --- dossier dedie par conversation : memoire + journal a l'interieur ---
 assert config.INDEX_FILE.exists()
-assert (config.ACTIONS_DIR / f"{cid}.json").exists()
-assert (config.MEMORY_DIR / f"{cid}.json").exists()
+home = convo.home_of(cid)
+assert home and convo.conv_file(home).exists()
+assert convo.mem_file(home).exists() and convo.actions_file(home).exists()
+assert convo.workspace_dir(home).is_dir()
 memory.log_action(cid, {"type": "tool", "tool": "write_file"})
 assert len(memory.load_actions(cid)) == 1
 memory.remember(cid, "prefere le francais")
@@ -81,7 +86,7 @@ memory.set_summary(cid, "resume de test")
 mem = memory.memory_block(cid)
 assert "francais" in mem and "atelier" in mem and "test" in mem
 assert "message 59" in memory.history_block(cid)
-check("index multi-JSON + memoire")
+check("dossier dedie par conversation (.atelier + workspace/) + memoire")
 
 # --- outils fichiers confines ---
 ws.set_active_workspace(os.environ["ATELIER_WORKSPACE"])
@@ -143,15 +148,17 @@ def fake(system, prompt, temperature=0.6, max_tokens=1200, model=None):
 team.ollama_stream = fake
 team.complete = lambda system, prompt, t=0.5, mx=1000, model=None: "".join(fake(system, prompt, t, mx, model))
 
-chat = convo.new_conversation(workspace=str(a))
+chat = convo.new_conversation(title="chat auto")     # dossier cree automatiquement
 cid2 = chat["id"]
+wsp = Path(chat["workspace"])
+assert wsp.name == "workspace" and "chat-auto" in chat["home"]
 convo.add_message(cid2, "user", "ecris une note")
 stage_models = {}
-for chunk in team.run_team(cid2, "ecris une note", workspace=str(a)):
+for chunk in team.run_team(cid2, "ecris une note", workspace=str(wsp)):
     e = json.loads(chunk[6:])
     if e["event"] == "stage_start":
         stage_models.setdefault(e["stage"], e.get("model"))
-assert (a / "note.md").is_file(), "note.md non ecrite dans le dossier du chat"
+assert (wsp / "note.md").is_file(), "note.md non ecrite dans le workspace du chat"
 assert stage_models == {"coordinateur": "coord-model", "architecte": "archi-model",
                         "developpeur": "dev-model", "relecteur": "review-model"}, stage_models
 by_role = {}
@@ -169,17 +176,25 @@ c = app.test_client()
 assert c.get("/api/conversations").status_code == 401
 assert c.post("/login", json={"password": "amexuhqia1337"}).get_json().get("ok")  # deja seme
 assert c.get("/").status_code == 200
-r = c.post("/api/conversations", json={"title": "S", "folder": "site"}).get_json()
+r = c.post("/api/conversations", json={"title": "Site auto"}).get_json()  # dossier auto
 ncid = r["conversation"]["id"]
-assert r["conversation"]["workspace"].endswith("site")
-assert c.post("/api/conversations", json={"title": "x"}).status_code == 400  # dossier requis
-ws.set_active_workspace(r["conversation"]["workspace"]); fileops.write_file("i.html", "<h1>ok</h1>")
-ws.set_active_workspace(None)
-listing = c.get(f"/api/files?conversation={ncid}").get_json()
-assert any(e["name"] == "i.html" for e in listing["entries"])
+assert r["conversation"]["workspace"].endswith("workspace")
+assert "site-auto" in r["conversation"]["home"]
+# envoi d'un zip depuis le web -> extrait dans workspace/
+buf = io.BytesIO()
+with zipfile.ZipFile(buf, "w") as z:
+    z.writestr("dossier/a.txt", "AAA")
+    z.writestr("b.txt", "BBB")
+buf.seek(0)
+up = c.post(f"/api/conversation/{ncid}/upload",
+            data={"file": (buf, "paquet.zip")},
+            content_type="multipart/form-data").get_json()
+assert up["results"][0]["ok"] and up["results"][0]["extracted"] == 2, up
+names = [e["name"] for e in c.get(f"/api/files?conversation={ncid}").get_json()["entries"]]
+assert "paquet.zip" in names and "paquet" in names, names   # zip + dossier extrait
 mani = c.get("/manifest.webmanifest")
 assert mani.status_code == 200 and "manifest+json" in mani.content_type
 assert c.get("/api/health").status_code in (200, 503)
-check("routes Flask (auth semee, conversations, fichiers scopes, manifeste)")
+check("routes Flask (dossier auto, envoi + extraction zip, manifeste)")
 
 print("\nTOUS LES TESTS PASSENT")

@@ -97,6 +97,9 @@ RUN_TIMEOUT = int(_env("ATELIER_RUN_TIMEOUT", "120"))
 MAX_READ_BYTES = 400_000
 MAX_OUTPUT_CHARS = 6000
 
+# Envoi de fichiers depuis le web (zip inclus).
+UPLOAD_MAX = int(_env("ATELIER_UPLOAD_MAX_MB", "200")) * 1024 * 1024
+
 # --------------------------------------------------------------------------
 # Recherche web
 # --------------------------------------------------------------------------
