@@ -601,7 +601,10 @@ async function run(){
       }
     }
   }catch(err){
-    if(liveBody){liveBody.classList.remove('caret');liveBody.textContent+='\n\n[Connexion interrompue : '+err.message+']';}
+    if(!liveBody) openStage('coordinateur','Connexion interrompue','');
+    if(liveBody){liveBody.classList.remove('caret');
+      liveBody.textContent+='\n\n[Connexion interrompue : '+err.message+
+        '. Vérifie qu’Ollama tourne et que les modèles sont installés (ollama list).]';}
   }finally{
     busy=false;g.disabled=false;g.textContent='Lancer';document.getElementById('q').focus();
     loadConversations();loadFiles(curPath);
@@ -625,6 +628,12 @@ function handleEvent(m){
     case 'tool_note': toolNote(m.text); break;
     case 'fs_change': break;
     case 'stage_end': if(liveBody)liveBody.classList.remove('caret'); break;
+    case 'error':
+      if(!liveBody) openStage('coordinateur','Erreur serveur','');
+      liveBody.classList.remove('caret');
+      liveBody.dataset.raw=(liveBody.dataset.raw||'')+'\n\n[Erreur serveur : '+(m.message||'')+']';
+      liveBody.textContent=liveBody.dataset.raw;
+      break;
     case 'done':
       if(liveBody)liveBody.classList.remove('caret');
       liveBody=null;curTrace=null;

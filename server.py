@@ -7,6 +7,9 @@ Ne contient que le routage ; toute la logique vit dans les modules dedies
 
 from functools import wraps
 from pathlib import Path
+import threading
+import traceback
+import queue
 import json
 
 from flask import (Flask, render_template, request, jsonify, Response,
@@ -300,11 +303,40 @@ def run():
 
     convo.add_message(conv_id, "user", question, file=file_name or None)
 
+    title = convo.load_conversation(conv_id)["title"]
+
     def stream():
-        yield llm.sse("conversation", id=conv_id,
-                      title=convo.load_conversation(conv_id)["title"])
-        yield from team.run_team(conv_id, question, file_name, file_text,
-                                 workspace=workspace_path)
+        """
+        La chaine d'agents tourne dans un thread ; on relaie ses evenements via
+        une file. Un « battement de cœur » toutes les 10 s de silence garde la
+        connexion vivante pendant les temps morts (chargement d'un modele par
+        Ollama, commande shell ou recherche web qui bloque), ce qui evite les
+        coupures « Load failed » cote navigateur.
+        """
+        q: queue.Queue = queue.Queue()
+
+        def produce():
+            try:
+                q.put(llm.sse("conversation", id=conv_id, title=title))
+                for event in team.run_team(conv_id, question, file_name, file_text,
+                                           workspace=workspace_path):
+                    q.put(event)
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                q.put(llm.sse("error", message=f"{type(exc).__name__}: {exc}"))
+            finally:
+                q.put(None)
+
+        threading.Thread(target=produce, daemon=True).start()
+        while True:
+            try:
+                item = q.get(timeout=10)
+            except queue.Empty:
+                yield ": keepalive\n\n"      # commentaire SSE, ignore par le client
+                continue
+            if item is None:
+                break
+            yield item
 
     return Response(stream(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

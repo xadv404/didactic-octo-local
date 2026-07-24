@@ -195,6 +195,11 @@ assert "paquet.zip" in names and "paquet" in names, names   # zip + dossier extr
 mani = c.get("/manifest.webmanifest")
 assert mani.status_code == 200 and "manifest+json" in mani.content_type
 assert c.get("/api/health").status_code in (200, 503)
-check("routes Flask (dossier auto, envoi + extraction zip, manifeste)")
+# streaming /api/run (thread + file d'attente) : arrive jusqu'a l'evenement done
+resp = c.post("/api/run", json={"question": "salut", "conversation": ncid})
+assert resp.status_code == 200
+body = resp.get_data(as_text=True)
+assert '"event": "conversation"' in body and '"event": "done"' in body, body[:200]
+check("routes Flask (dossier auto, envoi + extraction zip, manifeste, streaming)")
 
 print("\nTOUS LES TESTS PASSENT")
