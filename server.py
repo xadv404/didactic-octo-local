@@ -7,9 +7,6 @@ Ne contient que le routage ; toute la logique vit dans les modules dedies
 
 from functools import wraps
 from pathlib import Path
-import threading
-import traceback
-import queue
 import json
 
 from flask import (Flask, render_template, request, jsonify, Response,
@@ -24,6 +21,7 @@ import memory
 import workspace as ws
 import fileops
 import team
+import jobs
 import llm
 
 js.init()
@@ -278,6 +276,14 @@ def conversation_actions(conv_id):
 @app.route("/api/run", methods=["POST"])
 @login_required
 def run():
+    """
+    Demarre l'equipe d'agents en arriere-plan et renvoie immediatement un
+    identifiant de tache. Le client recupere les evenements par sondage
+    (GET /api/job/<id>/events) plutot que par une connexion HTTP longue :
+    sur un reseau mobile ou derriere certains proxys, un flux SSE de plusieurs
+    minutes est souvent coupe cote reseau ("Load failed"), alors que de courtes
+    requetes GET repetees passent sans probleme.
+    """
     data = request.get_json(silent=True) or {}
     question = (data.get("question") or "").strip()
     conv_id = data.get("conversation") or ""
@@ -302,41 +308,26 @@ def run():
         file_name = Path(result["path"]).name
 
     convo.add_message(conv_id, "user", question, file=file_name or None)
-
     title = convo.load_conversation(conv_id)["title"]
 
-    def stream():
-        """
-        La chaine d'agents tourne dans un thread ; on relaie ses evenements via
-        une file. Un « battement de cœur » toutes les 10 s de silence garde la
-        connexion vivante pendant les temps morts (chargement d'un modele par
-        Ollama, commande shell ou recherche web qui bloque), ce qui evite les
-        coupures « Load failed » cote navigateur.
-        """
-        q: queue.Queue = queue.Queue()
+    job_id = jobs.create_job()
+    jobs.push(job_id, llm.sse("conversation", id=conv_id, title=title))
 
-        def produce():
-            try:
-                q.put(llm.sse("conversation", id=conv_id, title=title))
-                for event in team.run_team(conv_id, question, file_name, file_text,
-                                           workspace=workspace_path):
-                    q.put(event)
-            except Exception as exc:  # noqa: BLE001
-                traceback.print_exc()
-                q.put(llm.sse("error", message=f"{type(exc).__name__}: {exc}"))
-            finally:
-                q.put(None)
+    def produce(jid):
+        for event in team.run_team(conv_id, question, file_name, file_text,
+                                   workspace=workspace_path):
+            jobs.push(jid, event)
 
-        threading.Thread(target=produce, daemon=True).start()
-        while True:
-            try:
-                item = q.get(timeout=10)
-            except queue.Empty:
-                yield ": keepalive\n\n"      # commentaire SSE, ignore par le client
-                continue
-            if item is None:
-                break
-            yield item
+    jobs.run_in_background(job_id, produce)
+    return jsonify({"job": job_id, "conversation": conv_id, "title": title})
 
-    return Response(stream(), mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+@app.route("/api/job/<job_id>/events")
+@login_required
+def job_events(job_id):
+    after = request.args.get("after", default=0, type=int)
+    result = jobs.poll(job_id, after)
+    if result is None:
+        return jsonify({"error": "Tache introuvable ou expiree."}), 404
+    events, nxt, done, error = result
+    return jsonify({"events": events, "next": nxt, "done": done, "error": error})

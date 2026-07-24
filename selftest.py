@@ -195,11 +195,22 @@ assert "paquet.zip" in names and "paquet" in names, names   # zip + dossier extr
 mani = c.get("/manifest.webmanifest")
 assert mani.status_code == 200 and "manifest+json" in mani.content_type
 assert c.get("/api/health").status_code in (200, 503)
-# streaming /api/run (thread + file d'attente) : arrive jusqu'a l'evenement done
-resp = c.post("/api/run", json={"question": "salut", "conversation": ncid})
-assert resp.status_code == 200
-body = resp.get_data(as_text=True)
-assert '"event": "conversation"' in body and '"event": "done"' in body, body[:200]
-check("routes Flask (dossier auto, envoi + extraction zip, manifeste, streaming)")
+# /api/run (tache en arriere-plan) + sondage : le POST rend la main tout de
+# suite (job_id), puis on interroge /api/job/<id>/events jusqu'a "done".
+resp = c.post("/api/run", json={"question": "salut", "conversation": ncid}).get_json()
+assert "job" in resp, resp
+job_id = resp["job"]
+import time as _time
+events, after, done, deadline = [], 0, False, _time.time() + 10
+while not done and _time.time() < deadline:
+    page = c.get(f"/api/job/{job_id}/events?after={after}").get_json()
+    events.extend(page["events"]); after = page["next"]; done = page["done"]
+    if not done:
+        _time.sleep(0.05)
+assert done, "la tache en arriere-plan ne s'est pas terminee a temps"
+blob = "\n".join(events)
+assert '"event": "conversation"' in blob and '"event": "done"' in blob, blob[:200]
+assert c.get("/api/job/inconnu/events").status_code == 404
+check("routes Flask (dossier auto, envoi + extraction zip, manifeste, tache + sondage)")
 
 print("\nTOUS LES TESTS PASSENT")

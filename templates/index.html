@@ -588,18 +588,8 @@ async function run(){
       body:JSON.stringify({question:text,conversation:convId,path:attached?attached.path:''})});
     if(r.status===401){location.href='/login';return}
     if(!r.ok){const e=await r.json().catch(()=>({}));openStage('coordinateur','Erreur','').textContent=e.error||r.statusText;return;}
-
-    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
-    while(true){
-      const{done,value}=await rd.read();if(done)break;
-      buf+=dec.decode(value,{stream:true});
-      const lines=buf.split('\n');buf=lines.pop();
-      for(const ln of lines){
-        if(!ln.startsWith('data: '))continue;
-        let m;try{m=JSON.parse(ln.slice(6))}catch{continue}
-        handleEvent(m);
-      }
-    }
+    const{job}=await r.json();
+    await pollJob(job);
   }catch(err){
     if(!liveBody) openStage('coordinateur','Connexion interrompue','');
     if(liveBody){liveBody.classList.remove('caret');
@@ -609,6 +599,44 @@ async function run(){
     busy=false;g.disabled=false;g.textContent='Lancer';document.getElementById('q').focus();
     loadConversations();loadFiles(curPath);
   }
+}
+
+/* ---------- sondage des evenements d'une tache ---------- */
+// Plutôt qu'un flux HTTP long (coupé sur mobile/derrière certains proxys après
+// quelques dizaines de secondes de silence — d'où « Load failed »), on
+// interroge périodiquement de courtes requêtes GET : elles passent partout.
+async function pollJob(jobId){
+  let after=0, misses=0;
+  const MAX_MISSES=20;      // ~40s d'échecs réseau consécutifs avant d'abandonner
+  while(true){
+    let j;
+    try{
+      const r=await fetch('/api/job/'+jobId+'/events?after='+after);
+      if(r.status===401){location.href='/login';return}
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      j=await r.json();
+      misses=0;
+    }catch(err){
+      misses++;
+      if(misses>MAX_MISSES) throw err;
+      await sleep(2000);
+      continue;
+    }
+    for(const raw of j.events){
+      const m=parseSseLine(raw);
+      if(m) handleEvent(m);
+    }
+    after=j.next;
+    if(j.error){ handleEvent({event:'error',message:j.error}); return; }
+    if(j.done) return;
+    await sleep(900);
+  }
+}
+function sleep(ms){return new Promise(res=>setTimeout(res,ms));}
+function parseSseLine(raw){
+  const line=(raw||'').split('\n').find(l=>l.startsWith('data: '));
+  if(!line) return null;
+  try{return JSON.parse(line.slice(6));}catch{return null;}
 }
 
 function handleEvent(m){

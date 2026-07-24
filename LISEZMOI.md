@@ -285,3 +285,4 @@ déclarés dans `toolbox.py` (`TOOLS` + `execute`) et implémentés dans
 | Recherche web en échec | DuckDuckGo bloque l'IP — passe sur Brave |
 | Mot de passe redemandé | Session de plus de 15 jours — c'est voulu |
 | Très lent | Inférence CPU + nombreux appels par demande |
+| « Connexion interrompue : Load failed » | Ancien souci de flux HTTP long coupé sur réseau mobile/proxy — corrigé : `/api/run` répond tout de suite (tâche en arrière-plan) et le navigateur sonde `/api/job/<id>/events` par courtes requêtes. Si ça persiste, regarde le terminal du serveur : la vraie erreur y est tracée. |
