@@ -13,8 +13,8 @@ const DEFAULT_SYSTEM =
   "repondent pas a la question, dis-le clairement plutot que d'inventer.";
 
 /** Fonction pure : assemble l'historique + le nouveau message (+ recherche). */
-function buildMessages(history, userText, searchBlock) {
-  const messages = [{ role: "system", content: DEFAULT_SYSTEM }];
+function buildMessages(history, userText, searchBlock, systemPrompt) {
+  const messages = [{ role: "system", content: systemPrompt || DEFAULT_SYSTEM }];
   for (const m of history || []) {
     if (m && m.role && m.content) messages.push({ role: m.role, content: m.content });
   }

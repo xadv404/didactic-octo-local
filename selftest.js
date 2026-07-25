@@ -13,6 +13,8 @@ const path = require("path");
 const search = require("./search");
 const ollama = require("./ollama");
 const store = require("./store");
+const tools = require("./tools");
+const agent = require("./agent");
 
 function check(label) {
   console.log("OK -", label);
@@ -80,6 +82,58 @@ assert.strictEqual(ollama.parseNdjsonLine("   "), null);
 assert.strictEqual(ollama.parseNdjsonLine("{pas du json}"), null);
 check("ollama.parseNdjsonLine (flux NDJSON)");
 
+const msgsWithSystem = ollama.buildMessages([], "salut", "", "Consigne personnalisee");
+assert.strictEqual(msgsWithSystem[0].content, "Consigne personnalisee");
+check("ollama.buildMessages (system personnalise pour l'agent)");
+
+// --------------------------------------------------------------------------
+// tools.js : lecture/ecriture confinees au dossier de projet
+// --------------------------------------------------------------------------
+
+const proj = fs.mkdtempSync(path.join(os.tmpdir(), "atelier-project-"));
+
+assert.deepStrictEqual(tools.resolveIn(proj, "../../etc/passwd"), {
+  path: null,
+  error: "Acces refuse : hors du dossier du projet.",
+});
+assert.ok(tools.resolveIn(proj, "sous/dossier").path.startsWith(proj));
+check("tools.resolveIn (confinement au dossier de projet)");
+
+let r = tools.writeFile(proj, "notes/idee.txt", "premiere idee");
+assert.ok(r.ok && r.action === "cree", r);
+r = tools.readFile(proj, "notes/idee.txt");
+assert.ok(r.ok && r.content === "premiere idee", r);
+r = tools.editFile(proj, "notes/idee.txt", "premiere", "deuxieme");
+assert.ok(r.ok && r.occurrences === 1, r);
+assert.strictEqual(tools.readFile(proj, "notes/idee.txt").content, "deuxieme idee");
+r = tools.listDir(proj, "notes");
+assert.ok(r.ok && r.entries.some((e) => e.name === "idee.txt"), r);
+assert.strictEqual(tools.readFile(proj, "../dehors.txt").ok, false);
+assert.strictEqual(tools.execute(proj, "outil_inconnu", {}).ok, false);
+check("tools.execute (write/read/edit/list confines, refus hors-projet)");
+
+fs.rmSync(proj, { recursive: true, force: true });
+
+// --------------------------------------------------------------------------
+// agent.js : extraction d'appel d'outil + mise en forme (pur)
+// --------------------------------------------------------------------------
+
+const call = agent.extractToolCall(
+  'Je vais lire ce fichier.\n```json\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```'
+);
+assert.deepStrictEqual(call, { tool: "read_file", args: { path: "a.txt" } });
+assert.strictEqual(agent.extractToolCall("juste du texte, aucun outil"), null);
+assert.strictEqual(agent.extractToolCall("```json\n{pas du json valide}\n```"), null);
+check("agent.extractToolCall (bloc JSON present / absent / invalide)");
+
+assert.ok(agent.systemPrompt("/tmp/mon-projet").includes("/tmp/mon-projet"));
+assert.ok(agent.systemPrompt("/x").includes("read_file"));
+check("agent.systemPrompt (mentionne le dossier + les outils)");
+
+assert.ok(agent.formatObservation("read_file", { ok: false, error: "Fichier introuvable." }).startsWith("ECHEC"));
+assert.ok(agent.formatObservation("list_dir", { ok: true, path: ".", entries: [{ name: "a.txt", type: "file" }] }).includes("a.txt"));
+check("agent.formatObservation (echec + succes)");
+
 // --------------------------------------------------------------------------
 // store.js : reglages + historique (fichiers reels, dossier temporaire)
 // --------------------------------------------------------------------------
@@ -112,7 +166,15 @@ fs.rmSync(tmp, { recursive: true, force: true });
 // Coherence des fichiers Electron (existence, pas d'require casse)
 // --------------------------------------------------------------------------
 
-for (const f of ["main.js", "preload.js", "renderer/index.html", "renderer/renderer.js", "renderer/style.css"]) {
+for (const f of [
+  "main.js",
+  "preload.js",
+  "tools.js",
+  "agent.js",
+  "renderer/index.html",
+  "renderer/renderer.js",
+  "renderer/style.css",
+]) {
   assert.ok(fs.existsSync(path.join(__dirname, f)), `manquant : ${f}`);
 }
 check("fichiers Electron presents (main, preload, renderer)");

@@ -12,6 +12,7 @@ let webOn = false;
 let busy = false;
 let liveEl = null;
 let liveRaw = "";
+let lastTrace = null;
 
 function esc(s) {
   const d = document.createElement("div");
@@ -63,6 +64,15 @@ function addSearchTrace(query) {
   const el = document.createElement("div");
   el.className = "searchtrace";
   el.innerHTML = `<div>🌐 Recherche : ${esc(query)}…</div>`;
+  feed.appendChild(el);
+  scrollDown();
+  return el;
+}
+
+function addToolTrace() {
+  removeIntro();
+  const el = document.createElement("div");
+  el.className = "tooltrace";
   feed.appendChild(el);
   scrollDown();
   return el;
@@ -144,10 +154,44 @@ window.atelier.onToken((text) => {
   scrollDown();
 });
 
+window.atelier.onToolCall((info) => {
+  const el = addToolTrace();
+  let argstr = "";
+  try {
+    argstr = JSON.stringify(info.args);
+  } catch {
+    /* ignore */
+  }
+  el.innerHTML =
+    `<div class="tcall">🔧 <span class="tn">${esc(info.tool)}</span></div>` +
+    (argstr && argstr !== "{}" ? `<div class="targs">${esc(argstr)}</div>` : "") +
+    `<div class="tout" style="display:none"></div>`;
+  lastTrace = el;
+  scrollDown();
+});
+
+window.atelier.onToolResult((info) => {
+  if (!lastTrace) return;
+  const out = lastTrace.querySelector(".tout");
+  out.style.display = "block";
+  out.className = "tout" + (info.ok ? "" : " err");
+  out.textContent = info.observation || "";
+  scrollDown();
+});
+
+window.atelier.onStepBoundary(() => {
+  // Le modele va reprendre apres le resultat d'un outil : on ferme la bulle
+  // en cours, la suite s'affichera dans une nouvelle bulle "Assistant".
+  if (liveEl) liveEl.classList.remove("caret");
+  liveEl = null;
+  liveRaw = "";
+});
+
 window.atelier.onDone(() => {
   if (liveEl) liveEl.classList.remove("caret");
   liveEl = null;
   liveRaw = "";
+  lastTrace = null;
   setBusy(false);
   qEl.focus();
 });
@@ -191,6 +235,23 @@ async function loadHistory() {
   for (const m of messages) addMessage(m.role, m.content);
 }
 
+function shortenPath(p) {
+  if (!p) return "…";
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : p;
+}
+
+async function loadProject() {
+  const p = await window.atelier.getProject();
+  document.getElementById("projectName").textContent = shortenPath(p);
+  document.getElementById("projectBtn").title = p ? `${p}\n(cliquer pour changer)` : "Changer de dossier";
+}
+
+document.getElementById("projectBtn").addEventListener("click", async () => {
+  await window.atelier.changeProject();
+  location.reload();
+});
+
 const settingsModal = document.getElementById("settingsModal");
 document.getElementById("settingsBtn").addEventListener("click", async () => {
   const s = await window.atelier.getSettings();
@@ -217,6 +278,7 @@ document.getElementById("clearBtn").addEventListener("click", async () => {
   location.reload();
 });
 
+loadProject();
 loadHistory();
 refreshHealth();
 setInterval(refreshHealth, 20000);

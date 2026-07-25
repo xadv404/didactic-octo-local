@@ -10,6 +10,7 @@
 <header class="top">
   <div class="brand">Atelier<em>.</em></div>
   <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">Vérification…</span></div>
+  <button class="project-btn" id="projectBtn" title="Changer de dossier de projet">📁 <span id="projectName">…</span></button>
   <button class="icon-btn" id="settingsBtn" title="Réglages">⚙</button>
   <button class="icon-btn" id="clearBtn" title="Effacer la conversation">🗑</button>
 </header>
@@ -17,10 +18,11 @@
 <main class="feed" id="feed">
   <div class="intro" id="intro">
     <h2>Chat local</h2>
-    <p>Discute avec ton modèle Ollama. Active <b>🌐 Web</b> juste avant d'envoyer
-    un message pour que <b>ce message précis</b> déclenche une recherche —
-    le bouton se réinitialise après chaque envoi, il faut le recliquer à
-    chaque fois que tu veux une recherche.</p>
+    <p>Discute avec ton modèle Ollama. Il peut lire et écrire des fichiers du
+    dossier de projet ouvert (visible en haut) quand c'est utile à ta demande.
+    Active <b>🌐 Web</b> juste avant d'envoyer un message pour que <b>ce message
+    précis</b> déclenche une recherche — le bouton se réinitialise après chaque
+    envoi, il faut le recliquer à chaque fois que tu veux une recherche.</p>
   </div>
 </main>
 
