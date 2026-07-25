@@ -58,6 +58,8 @@ Commandes dans le chat :
 | Commande | Effet |
 |---|---|
 | `/web <message>` | Recherche web pour **ce message uniquement** (comme le bouton 🌐 de l'app) |
+| `/web on` | Active la recherche pour **tous les messages suivants**, sans avoir a la redemander |
+| `/web off` | Revient au mode message par message (defaut) |
 | `/clear` | Efface l'historique de ce projet |
 | `/help` | Affiche l'aide |
 | `/exit` ou `/quit` (ou Ctrl+D) | Quitte |
@@ -92,8 +94,15 @@ lire, écrire et remplacer un extrait dans un fichier existant.
 À côté de la zone de saisie, le bouton **🌐 Web** n'agit **que pour le message
 en cours** : s'il est actif quand tu appuies sur Envoyer, ce message déclenche
 une recherche DuckDuckGo dont les résultats sont injectés au modèle avant sa
-réponse. Le bouton se **désactive automatiquement** après l'envoi — il faut le
-recliquer à chaque fois que tu veux une recherche pour un nouveau message.
+réponse. Par défaut, le bouton se **désactive automatiquement** après l'envoi
+— il faut le recliquer à chaque fois que tu veux une recherche pour un nouveau
+message.
+
+Coche **« Toujours »** à côté du bouton pour que la recherche s'active
+**automatiquement à chaque message**, sans avoir à recliquer — pratique pour
+une session où tu veux systématiquement des informations à jour. Décoche pour
+revenir au mode message par message. En CLI, l'équivalent est `/web on` et
+`/web off` (voir plus bas).
 
 La recherche passe par une **fenêtre Chromium cachée** (`browserSearch.js`) :
 Electron embarque déjà Chromium, donc pas de dépendance supplémentaire — la

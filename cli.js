@@ -57,12 +57,27 @@ function printHelp() {
       "",
       "Dans le chat :",
       "  /web <message>   Declenche une recherche web pour CE message uniquement.",
+      "  /web on          Active la recherche web pour TOUS les messages suivants.",
+      "  /web off         Revient au mode message par message (defaut).",
       "  /clear           Efface l'historique de ce projet.",
       "  /help            Affiche cette aide.",
       "  /exit ou /quit   Quitte (Ctrl+D aussi).",
       "",
     ].join("\n")
   );
+}
+
+/**
+ * Fonction pure : interprete une ligne de chat selon l'etat "toujours" en
+ * cours. Renvoie soit une bascule de mode ({ setAlways }), soit un message
+ * a traiter ({ useWeb, question }).
+ */
+function interpretWebCommand(raw, alwaysWeb) {
+  if (raw === "/web on") return { setAlways: true };
+  if (raw === "/web off") return { setAlways: false };
+  const oneShot = raw.startsWith("/web ");
+  const question = oneShot ? raw.slice(5).trim() : raw;
+  return { useWeb: alwaysWeb || oneShot, question };
 }
 
 async function runTurn({ projectRoot, chatDir, settings, question, useWeb }) {
@@ -155,6 +170,7 @@ async function main() {
   let draining = false;
   let closing = false;
   let currentDrain = null;
+  let alwaysWeb = false;
 
   async function processLine(raw) {
     if (!raw) return;
@@ -173,8 +189,17 @@ async function main() {
       return;
     }
 
-    const useWeb = raw.startsWith("/web ");
-    const question = useWeb ? raw.slice(5).trim() : raw;
+    const interpreted = interpretWebCommand(raw, alwaysWeb);
+    if ("setAlways" in interpreted) {
+      alwaysWeb = interpreted.setAlways;
+      console.log(
+        alwaysWeb
+          ? "🌐 Recherche web activee pour tous les messages (jusqu'a /web off).\n"
+          : "Recherche web desactivee par defaut (utilise /web <message> au coup par coup).\n"
+      );
+      return;
+    }
+    const { useWeb, question } = interpreted;
     if (!question) return;
 
     try {
@@ -219,7 +244,7 @@ async function main() {
   });
 }
 
-module.exports = { parseArgs };
+module.exports = { parseArgs, interpretWebCommand };
 
 if (require.main === module) {
   main();

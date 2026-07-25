@@ -185,6 +185,14 @@ assert.strictEqual(a4.folder, "/mon/projet");
 assert.strictEqual(a4.model, "qwen2.5:7b");
 check("cli.parseArgs (dossier, --model, --url, --help, repli sur cwd)");
 
+assert.deepStrictEqual(cli.interpretWebCommand("/web on", false), { setAlways: true });
+assert.deepStrictEqual(cli.interpretWebCommand("/web off", true), { setAlways: false });
+assert.deepStrictEqual(cli.interpretWebCommand("/web meteo a paris", false), { useWeb: true, question: "meteo a paris" });
+assert.deepStrictEqual(cli.interpretWebCommand("bonjour", false), { useWeb: false, question: "bonjour" });
+assert.deepStrictEqual(cli.interpretWebCommand("bonjour", true), { useWeb: true, question: "bonjour" });
+assert.deepStrictEqual(cli.interpretWebCommand("/web quoi de neuf", true), { useWeb: true, question: "quoi de neuf" });
+check("cli.interpretWebCommand (mode ponctuel /web <msg> vs permanent /web on/off)");
+
 // --------------------------------------------------------------------------
 // Coherence des fichiers Electron (existence, pas d'require casse)
 // --------------------------------------------------------------------------

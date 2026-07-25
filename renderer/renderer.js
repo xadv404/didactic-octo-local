@@ -5,10 +5,12 @@ let intro = document.getElementById("intro");
 const qEl = document.getElementById("q");
 const goBtn = document.getElementById("go");
 const webToggle = document.getElementById("webToggle");
+const webAlways = document.getElementById("webAlways");
 const dot = document.getElementById("dot");
 const statusTxt = document.getElementById("statusTxt");
 
 let webOn = false;
+let webAlwaysOn = false;
 let busy = false;
 let liveEl = null;
 let liveRaw = "";
@@ -89,8 +91,9 @@ function setWebToggle(on) {
   webToggle.classList.toggle("on", on);
 }
 
-/** Envoie le message courant. Le bouton Web se reinitialise systematiquement
- *  apres l'envoi : il ne vaut que pour ce message, jamais pour les suivants. */
+/** Envoie le message courant. Par defaut, le bouton Web se reinitialise
+ *  apres l'envoi (il ne vaut que pour ce message) — sauf si « Toujours »
+ *  est coche, auquel cas il reste actif pour tous les messages suivants. */
 function send() {
   const text = qEl.value.trim();
   if (!text || busy) return;
@@ -101,7 +104,7 @@ function send() {
   setBusy(true);
 
   const useWeb = webOn;
-  setWebToggle(false);
+  if (!webAlwaysOn) setWebToggle(false);
   if (useWeb) addSearchTrace(text);
 
   liveEl = null;
@@ -110,7 +113,16 @@ function send() {
   window.atelier.sendMessage({ text, web: useWeb });
 }
 
-webToggle.addEventListener("click", () => setWebToggle(!webOn));
+webToggle.addEventListener("click", () => {
+  if (webAlwaysOn) return; // pilote par la case "Toujours" tant qu'elle est cochee
+  setWebToggle(!webOn);
+});
+
+webAlways.addEventListener("change", () => {
+  webAlwaysOn = webAlways.checked;
+  webToggle.disabled = webAlwaysOn;
+  setWebToggle(webAlwaysOn);
+});
 goBtn.addEventListener("click", send);
 qEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
