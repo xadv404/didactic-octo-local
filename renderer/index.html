@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Atelier — chatbot</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">Atelier<em>.</em></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">Vérification…</span></div>
+  <button class="icon-btn" id="settingsBtn" title="Réglages">⚙</button>
+  <button class="icon-btn" id="clearBtn" title="Effacer la conversation">🗑</button>
+</header>
+
+<main class="feed" id="feed">
+  <div class="intro" id="intro">
+    <h2>Chat local</h2>
+    <p>Discute avec ton modèle Ollama. Active <b>🌐 Web</b> juste avant d'envoyer
+    un message pour que <b>ce message précis</b> déclenche une recherche —
+    le bouton se réinitialise après chaque envoi, il faut le recliquer à
+    chaque fois que tu veux une recherche.</p>
+  </div>
+</main>
+
+<footer class="composer">
+  <div class="webrow">
+    <button class="webtoggle" id="webToggle" title="Rechercher sur le web pour ce message uniquement">🌐 Web</button>
+    <span class="searchnote" id="searchNote"></span>
+  </div>
+  <div class="row">
+    <textarea id="q" rows="1" placeholder="Écris un message…"></textarea>
+    <button class="go" id="go">Envoyer</button>
+  </div>
+  <div class="hint">Entrée pour envoyer · Maj+Entrée pour un saut de ligne</div>
+</footer>
+
+<div class="modal" id="settingsModal">
+  <div class="modal-card">
+    <div class="modal-title">Réglages</div>
+    <label>Adresse Ollama</label>
+    <input id="stUrl" spellcheck="false" placeholder="http://localhost:11434">
+    <label>Modèle</label>
+    <input id="stModel" spellcheck="false" placeholder="qwen2.5:7b">
+    <div class="modal-row">
+      <button class="mcancel" id="stCancel">Annuler</button>
+      <button class="mok" id="stSave">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
