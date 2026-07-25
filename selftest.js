@@ -171,6 +171,7 @@ for (const f of [
   "preload.js",
   "tools.js",
   "agent.js",
+  "browserSearch.js",
   "renderer/index.html",
   "renderer/renderer.js",
   "renderer/style.css",

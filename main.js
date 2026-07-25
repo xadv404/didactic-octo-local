@@ -14,6 +14,7 @@ const os = require("os");
 const store = require("./store");
 const ollama = require("./ollama");
 const search = require("./search");
+const browserSearch = require("./browserSearch");
 const toolset = require("./tools");
 const agent = require("./agent");
 
@@ -127,6 +128,24 @@ ipcMain.handle("health:check", async () => {
 });
 
 // --------------------------------------------------------------------------
+// Recherche : Chromium headless (fenetre cachee) en premier, repli sur une
+// requete HTTP directe si la fenetre echoue ou ne trouve rien. ATELIER_SEARCH
+// =fetch force le repli seul (utile en environnement sans fenetre stable).
+// --------------------------------------------------------------------------
+
+async function performSearch(query) {
+  if (process.env.ATELIER_SEARCH !== "fetch") {
+    try {
+      const results = await browserSearch.searchWithChromium(query);
+      if (results.length) return results;
+    } catch {
+      /* on retente avec le repli HTTP ci-dessous */
+    }
+  }
+  return search.search(query);
+}
+
+// --------------------------------------------------------------------------
 // Chat : un seul modele, qui peut au besoin lire/ecrire dans le dossier du
 // projet (boucle courte, pas d'etages d'agents). Le bouton Web ne vaut que
 // pour ce message : le renderer le reinitialise a chaque envoi.
@@ -148,7 +167,7 @@ ipcMain.on("chat:send", async (event, payload) => {
   if (useWeb) {
     sender.send("chat:search", { status: "start", query: question });
     try {
-      const results = await search.search(question);
+      const results = await performSearch(question);
       searchBlock = search.formatResults(question, results);
       sender.send("chat:search", { status: "done", query: question, results });
     } catch (exc) {

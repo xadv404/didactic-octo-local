@@ -53,6 +53,13 @@ une recherche DuckDuckGo dont les résultats sont injectés au modèle avant sa
 réponse. Le bouton se **désactive automatiquement** après l'envoi — il faut le
 recliquer à chaque fois que tu veux une recherche pour un nouveau message.
 
+La recherche passe par une **fenêtre Chromium cachée** (`browserSearch.js`) :
+Electron embarque déjà Chromium, donc pas de dépendance supplémentaire — la
+page est réellement chargée et rendue (headless, jamais affichée), ce qui
+passe mieux les blocages qu'une simple requête HTTP. En cas d'échec, repli
+automatique sur une requête HTTP directe (`search.js`). Pour forcer ce repli
+seul : `ATELIER_SEARCH=fetch npm start`.
+
 ## Réglages
 
 L'icône ⚙ (en haut) ouvre un panneau pour changer :
@@ -74,7 +81,8 @@ choisi est bien installé.
 | `ollama.js` | construction des messages + streaming de la réponse |
 | `agent.js` | consigne système « outils » + extraction des appels d'outil |
 | `tools.js` | lecture/écriture de fichiers confinée au dossier de projet |
-| `search.js` | recherche web DuckDuckGo (requête + parsing) |
+| `browserSearch.js` | recherche via Chromium headless (fenêtre Electron cachée) |
+| `search.js` | recherche web DuckDuckGo par requête HTTP directe (repli) |
 | `store.js` | réglages + historique, persistés en JSON |
 | `renderer/index.html` | structure de la fenêtre |
 | `renderer/renderer.js` | logique de l'interface (chat, outils, Web, réglages) |
@@ -82,7 +90,8 @@ choisi est bien installé.
 | `selftest.js` | tests des modules purs, sans Electron ni réseau |
 
 `ollama.js`, `search.js`, `store.js`, `tools.js` et `agent.js` ne dépendent pas
-d'Electron : ils sont testables avec du Node pur.
+d'Electron : ils sont testables avec du Node pur. Seul `browserSearch.js`
+nécessite Electron (`BrowserWindow`), puisque c'est tout son propos.
 
 ```bash
 npm test          # ou : node selftest.js
