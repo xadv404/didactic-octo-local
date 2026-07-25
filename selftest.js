@@ -15,6 +15,7 @@ const ollama = require("./ollama");
 const store = require("./store");
 const tools = require("./tools");
 const agent = require("./agent");
+const cli = require("./cli");
 
 function check(label) {
   console.log("OK -", label);
@@ -161,6 +162,28 @@ assert.deepStrictEqual(store.loadHistory(tmp), []);
 check("store.appendMessage / loadHistory / clearHistory");
 
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// --------------------------------------------------------------------------
+// cli.js : lecture des arguments (pur, sans lancer le REPL)
+// --------------------------------------------------------------------------
+
+const a1 = cli.parseArgs(["/tmp/mon-projet"]);
+assert.strictEqual(a1.folder, "/tmp/mon-projet");
+assert.strictEqual(a1.model, null);
+assert.strictEqual(a1.help, false);
+
+const a2 = cli.parseArgs(["--model", "dolphin3", "--url", "http://10.0.0.5:11434"]);
+assert.strictEqual(a2.model, "dolphin3");
+assert.strictEqual(a2.url, "http://10.0.0.5:11434");
+assert.strictEqual(a2.folder, process.cwd()); // pas de dossier fourni -> repli sur cwd
+
+const a3 = cli.parseArgs(["--help"]);
+assert.strictEqual(a3.help, true);
+
+const a4 = cli.parseArgs(["/mon/projet", "--model", "qwen2.5:7b"]);
+assert.strictEqual(a4.folder, "/mon/projet");
+assert.strictEqual(a4.model, "qwen2.5:7b");
+check("cli.parseArgs (dossier, --model, --url, --help, repli sur cwd)");
 
 // --------------------------------------------------------------------------
 // Coherence des fichiers Electron (existence, pas d'require casse)

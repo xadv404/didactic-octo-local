@@ -1,9 +1,10 @@
-# Atelier — chatbot de bureau (Electron)
+# Atelier — chatbot (Electron ou ligne de commande)
 
-Un chatbot **simple** en application de bureau (Electron), branché sur un
-modèle Ollama **local**. Pas de site web, pas de plusieurs agents qui se
-relaient : un modèle, une conversation par projet, et un bouton **🌐 Web** pour
-activer une recherche web au coup par coup.
+Un chatbot **simple**, branché sur un modèle Ollama **local**, utilisable en
+app de bureau (Electron) **ou** en ligne de commande — les deux partagent le
+même moteur et le même format de conversation. Pas de site web, pas de
+plusieurs agents qui se relaient : un modèle, une conversation par projet, et
+une recherche web activable au coup par coup.
 
 ## Installation
 
@@ -18,6 +19,11 @@ Puis, dans le dossier du projet :
 
 ```bash
 npm install
+```
+
+### App de bureau
+
+```bash
 npm start
 ```
 
@@ -25,6 +31,42 @@ Au lancement, une **fenêtre de sélection de dossier** s'ouvre : choisis le
 dossier du projet sur lequel tu veux travailler (ou annule pour reprendre le
 dernier utilisé). Ollama doit tourner (`ollama serve`, ou il démarre tout seul
 selon l'installation).
+
+### Ligne de commande
+
+```bash
+npm run chat -- .          # dossier courant
+# ou : node cli.js /chemin/vers/un/projet
+# ou, apres un `npm link` (installation globale) : atelier /chemin/vers/un/projet
+```
+
+```
+Atelier — /chemin/vers/un/projet
+Modele : qwen2.5:7b  ·  Ollama : http://localhost:11434
+Tape /help pour les commandes, /exit pour quitter.
+
+> explique-moi ce que fait index.js
+...
+> /web quelle version de node est recommandee pour ce projet ?
+🌐 Recherche…
+  [1] ...
+...
+```
+
+Commandes dans le chat :
+
+| Commande | Effet |
+|---|---|
+| `/web <message>` | Recherche web pour **ce message uniquement** (comme le bouton 🌐 de l'app) |
+| `/clear` | Efface l'historique de ce projet |
+| `/help` | Affiche l'aide |
+| `/exit` ou `/quit` (ou Ctrl+D) | Quitte |
+
+Options : `--model <nom>` et `--url <adresse>` (mémorisées pour la prochaine
+fois, dans `~/.atelier-cli/settings.json`).
+
+Un même dossier de projet garde **la même conversation** qu'on l'ouvre en CLI
+ou dans l'app de bureau (`<dossier>/.atelier-chat/history.json`).
 
 ## Le dossier de projet
 
@@ -78,11 +120,12 @@ choisi est bien installé.
 |---|---|
 | `main.js` | processus principal Electron : sélection du projet, fenêtre, câblage IPC |
 | `preload.js` | pont sécurisé entre la fenêtre et `main.js` |
+| `cli.js` | chatbot en ligne de commande (même moteur, sans Electron) |
 | `ollama.js` | construction des messages + streaming de la réponse |
 | `agent.js` | consigne système « outils » + extraction des appels d'outil |
 | `tools.js` | lecture/écriture de fichiers confinée au dossier de projet |
 | `browserSearch.js` | recherche via Chromium headless (fenêtre Electron cachée) |
-| `search.js` | recherche web DuckDuckGo par requête HTTP directe (repli) |
+| `search.js` | recherche web DuckDuckGo par requête HTTP directe (repli, utilisée aussi par la CLI) |
 | `store.js` | réglages + historique, persistés en JSON |
 | `renderer/index.html` | structure de la fenêtre |
 | `renderer/renderer.js` | logique de l'interface (chat, outils, Web, réglages) |

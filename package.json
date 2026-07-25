@@ -1,11 +1,15 @@
 {
   "name": "atelier-chatbot",
   "version": "1.0.0",
-  "description": "Chatbot de bureau (Electron) sur un modele Ollama local, avec recherche web a la demande.",
+  "description": "Chatbot (Electron ou CLI) sur un modele Ollama local, avec recherche web a la demande.",
   "main": "main.js",
   "private": true,
+  "bin": {
+    "atelier": "./cli.js"
+  },
   "scripts": {
     "start": "electron .",
+    "chat": "node cli.js",
     "test": "node selftest.js"
   },
   "devDependencies": {
