@@ -9,6 +9,6 @@
     "test": "node selftest.js"
   },
   "devDependencies": {
-    "electron": "^32.0.0"
+    "electron": "^43.2.0"
   }
 }
