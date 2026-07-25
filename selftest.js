@@ -127,6 +127,17 @@ assert.strictEqual(agent.extractToolCall("juste du texte, aucun outil"), null);
 assert.strictEqual(agent.extractToolCall("```json\n{pas du json valide}\n```"), null);
 check("agent.extractToolCall (bloc JSON present / absent / invalide)");
 
+// Regression : un modele peut halluciner un outil inexistant (ex. web_search,
+// qu'il connait d'entrainements generaux mais qui n'est pas cable ici). Ca ne
+// doit jamais etre execute ni affiche comme un vrai appel d'outil — sinon un
+// message normal peut sembler declencher une recherche web non demandee.
+assert.strictEqual(
+  agent.extractToolCall('Je vais chercher en ligne.\n```json\n{"tool": "web_search", "args": {"query": "x"}}\n```'),
+  null
+);
+assert.strictEqual(agent.extractToolCall('```json\n{"tool": "run_shell", "args": {}}\n```'), null);
+check("agent.extractToolCall (ignore les outils halluciness/inconnus, ex. web_search)");
+
 assert.ok(agent.systemPrompt("/tmp/mon-projet").includes("/tmp/mon-projet"));
 assert.ok(agent.systemPrompt("/x").includes("read_file"));
 check("agent.systemPrompt (mentionne le dossier + les outils)");
